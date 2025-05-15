@@ -48,6 +48,13 @@ interface ScanResult {
   message?: string;
 }
 
+// Interface for stored scan data
+interface StoredScan {
+  input: string;
+  result: ScanResult;
+  timestamp: string;
+}
+
 // Interface for chatbot messages
 interface ChatMessage {
   id: number;
@@ -64,6 +71,7 @@ export default function Home() {
   const [logResults, setLogResults] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isCached, setIsCached] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
@@ -76,11 +84,43 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  // Load stored scans from localStorage on mount
+  useEffect(() => {
+    // Optional: Fetch updated monitoring results from server
+    const fetchMonitoringResults = async () => {
+      try {
+        const response = await fetch("https://cyberregisserver-production.up.railway.app/api/monitoring-results", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (response.ok) {
+          const { urls, ips } = await response.json();
+          if (urls) localStorage.setItem("cyberregis_urls", JSON.stringify(urls));
+          if (ips) localStorage.setItem("cyberregis_ips", JSON.stringify(ips));
+        }
+      } catch (error) {
+        console.error("Error fetching monitoring results:", error);
+      }
+    };
+    fetchMonitoringResults();
+  }, []);
+
   const checkUrl = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    const API_URL = "https://cyberregisserver-production.up.railway.app";
+    setIsCached(false);
 
+    // Check localStorage
+    const storedUrls: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_urls") || "[]");
+    const cached = storedUrls.find((scan) => scan.input === url);
+    if (cached) {
+      setUrlResults(cached.result);
+      setIsCached(true);
+      setLoading(false);
+      return;
+    }
+
+    const API_URL = "https://cyberregisserver-production.up.railway.app";
     try {
       const response = await fetch(`${API_URL}/api/check-url`, {
         method: "POST",
@@ -89,6 +129,14 @@ export default function Home() {
       });
       const data = await response.json();
       setUrlResults(data);
+
+      // Store in localStorage
+      storedUrls.push({
+        input: url,
+        result: data,
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem("cyberregis_urls", JSON.stringify(storedUrls));
     } catch (error) {
       setUrlResults({
         status: "error",
@@ -102,8 +150,19 @@ export default function Home() {
   const checkIp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    const API_URL = "https://cyberregisserver-production.up.railway.app";
+    setIsCached(false);
 
+    // Check localStorage
+    const storedIps: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_ips") || "[]");
+    const cached = storedIps.find((scan) => scan.input === ip);
+    if (cached) {
+      setIpResults(cached.result);
+      setIsCached(true);
+      setLoading(false);
+      return;
+    }
+
+    const API_URL = "https://cyberregisserver-production.up.railway.app";
     try {
       const response = await fetch(`${API_URL}/api/check-ip`, {
         method: "POST",
@@ -112,6 +171,14 @@ export default function Home() {
       });
       const data = await response.json();
       setIpResults(data);
+
+      // Store in localStorage
+      storedIps.push({
+        input: ip,
+        result: data,
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem("cyberregis_ips", JSON.stringify(storedIps));
     } catch (error) {
       setIpResults({
         status: "error",
@@ -145,44 +212,49 @@ export default function Home() {
     }
 
     setLoading(true);
+    setIsCached(false);
+
+    // Check localStorage (using file name as key)
+    const storedLogs: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_logs") || "[]");
+    const cached = storedLogs.find((scan) => scan.input === selectedFile.name);
+    if (cached) {
+      setLogResults(cached.result);
+      setIsCached(true);
+      setLoading(false);
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
       console.log("Uploading file:", selectedFile.name, selectedFile.size);
 
-      const response = await fetch(
-        "https://effective-computing-machine-w6pqwrj9rj93gvp9-4000.app.github.dev/api/analyze-pcap",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await fetch("http://localhost:4000/api/analyze-pcap", {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("Server error:", response.status, errorData);
-        throw new Error(
-          errorData.message || `Server responded with status: ${response.status}`
-        );
+        throw new Error(errorData.message || `Server responded with status: ${response.status}`);
       }
 
       const data = await response.json();
       console.log("Analysis response:", data);
-
-      // Store the full response
       setLogResults(data);
 
-      // Optionally, extract and display specific fields
-      if (data.status === "success") {
-        const { chart_base64, metadata, pcap_analysis, virustotal } = data.data;
-        console.log("Metadata:", metadata);
-        console.log("PCAP Analysis:", pcap_analysis);
-        console.log("VirusTotal:", virustotal);
-      }
+      // Store in localStorage
+      storedLogs.push({
+        input: selectedFile.name,
+        result: data,
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem("cyberregis_logs", JSON.stringify(storedLogs));
     } catch (error) {
       setLogResults({
         status: "error",
-        message: `Failed to analyze network log: ${error.message}`,
+        message: `Failed to analyze network log: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
       });
       console.error("Error analyzing network log:", error);
     } finally {
@@ -421,6 +493,26 @@ export default function Home() {
           </Card>
         </div>
 
+        <Card className="p-6 border-primary/20 bg-card/50 backdrop-blur-sm mb-8">
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <h2 className="text-2xl font-semibold">Threat Map Live</h2>
+              <p className="text-sm text-muted-foreground">
+                Real-time visualization of global cyber threats (Source: Radware)
+              </p>
+            </div>
+            <Separator />
+            <div className="relative w-full h-[400px] rounded-md overflow-hidden">
+              <iframe
+                src="https://livethreatmap.radware.com"
+                className="w-full h-full border-none"
+                title="Radware Live Threat Map"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </Card>
+
         <Card className="border-primary/20 bg-card/50 backdrop-blur-sm mb-8">
           <Tabs defaultValue="url" className="p-6">
             <TabsList className="grid w-full grid-cols-3 lg:w-[400px] mb-6">
@@ -468,7 +560,14 @@ export default function Home() {
                       urlResults.status === "error" ? "destructive" : "primary"
                     }/10 border-${urlResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
-                    <AlertDescription>{formatResults(urlResults)}</AlertDescription>
+                    <AlertDescription>
+                      {isCached && (
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Showing cached results from {new Date(urlResults.timestamp || "").toLocaleString()}
+                        </p>
+                      )}
+                      {formatResults(urlResults)}
+                    </AlertDescription>
                   </Alert>
                 )}
               </form>
@@ -505,7 +604,14 @@ export default function Home() {
                       ipResults.status === "error" ? "destructive" : "primary"
                     }/10 border-${ipResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
-                    <AlertDescription>{formatResults(ipResults)}</AlertDescription>
+                    <AlertDescription>
+                      {isCached && (
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Showing cached results from {new Date(ipResults.timestamp || "").toLocaleString()}
+                        </p>
+                      )}
+                      {formatResults(ipResults)}
+                    </AlertDescription>
                   </Alert>
                 )}
               </form>
@@ -574,6 +680,11 @@ export default function Home() {
                   >
                     <AlertDescription>
                       <div className="space-y-2">
+                        {isCached && (
+                          <p className="text-sm text-muted-foreground mb-2">
+                            Showing cached results from {new Date(logResults.timestamp || "").toLocaleString()}
+                          </p>
+                        )}
                         <p
                           className={`text-${
                             logResults.status === "error" ? "destructive" : "primary"
