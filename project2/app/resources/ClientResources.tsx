@@ -52,10 +52,13 @@ export default function ClientResources({ initialBlogs, initialThreatNews, initi
   const [blogs, setBlogs] = useState(initialBlogs);
   const [threatNews, setThreatNews] = useState(initialThreatNews);
   const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString());
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   // Polling for updates (5 minutes for News API, 1 minute for others)
   useEffect(() => {
+    // Set initial time only on client side to avoid hydration mismatch
+    setLastUpdated(new Date().toLocaleTimeString());
+    
     const fetchUpdates = async () => {
       setIsLoading(true);
       try {
