@@ -27,7 +27,7 @@ interface ChatMessage {
   id: number;
   text: string;
   isUser: boolean;
-  timestamp: string;
+  timestamp: string | null;
 }
 
 // Props for the reusable Chatbot component
@@ -38,7 +38,7 @@ interface ChatbotProps {
 }
 
 export default function Chatbot({
-  apiEndpoint = "http://127.0.0.1:4000/api/chat",
+  apiEndpoint = "http://localhost.com:4000/api/chat",
   className,
   initialMessages = [],
 }: ChatbotProps) {
