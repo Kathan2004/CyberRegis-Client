@@ -82,7 +82,23 @@ interface ScanResult {
           results?: { [engine: string]: { category: string; result: string } };
         };
       };
+      // Enhanced security analysis structure
+      risk_assessment?: {
+        risk_score: number;
+        risk_level: 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW' | 'UNKNOWN';
+        malicious_count: number;
+        suspicious_count: number;
+        detection_ratio: string;
+        total_engines: number;
+      };
+      metadata?: {
+        reputation?: number;
+        file_type?: string;
+        analysis_date?: number;
+      };
+      error?: string;
     };
+    virustotal_summary?: string;
     pcap_analysis?: { [protocol: string]: number };
     chart_base64?: string;
     // IP-specific fields that might be nested under data
@@ -343,13 +359,16 @@ interface ChatMessage {
 }
 
 export default function Home() {
-  const [url, setUrl] = useState("");
+  const [integratedInput, setIntegratedInput] = useState("");
+  const [integratedResults, setIntegratedResults] = useState<{
+    urlResults: ScanResult | null;
+    domainResults: ScanResult | null;
+  } | null>(null);
+  const [integratedLoading, setIntegratedLoading] = useState(false);
+  const [integratedViewMode, setIntegratedViewMode] = useState<'normal' | 'json'>('normal');
   const [ip, setIp] = useState("");
-  const [domain, setDomain] = useState("");
-  const [urlResults, setUrlResults] = useState<ScanResult | null>(null);
   const [ipResults, setIpResults] = useState<ScanResult | null>(null);
   const [logResults, setLogResults] = useState<ScanResult | null>(null);
-  const [domainResults, setDomainResults] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isCached, setIsCached] = useState(false);
@@ -366,10 +385,8 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   
   // View mode states for each scan type
-  const [urlViewMode, setUrlViewMode] = useState<'normal' | 'json'>('normal');
   const [ipViewMode, setIpViewMode] = useState<'normal' | 'json'>('normal');
   const [logViewMode, setLogViewMode] = useState<'normal' | 'json'>('normal');
-  const [domainViewMode, setDomainViewMode] = useState<'normal' | 'json'>('normal');
   
   // File content modal state
   const [fileContent, setFileContent] = useState<{
@@ -422,48 +439,6 @@ export default function Home() {
     // Will be added when the backend is ready
   }, []);
 
-  const checkUrl = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setIsCached(false);
-
-    // Check localStorage
-    const storedUrls: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_urls") || "[]");
-    const cached = storedUrls.find((scan) => scan.input === url);
-    if (cached) {
-      setUrlResults(cached.result);
-      setIsCached(true);
-      setLoading(false);
-      return;
-    }
-
-    const API_URL = "http://localhost:4000";
-    try {
-      const response = await fetch(`${API_URL}/api/check-url`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const data = await response.json();
-      setUrlResults(data);
-
-      // Store in localStorage
-      storedUrls.push({
-        input: url,
-        result: data,
-        timestamp: new Date().toISOString(),
-      });
-      localStorage.setItem("cyberregis_urls", JSON.stringify(storedUrls));
-    } catch (error) {
-      setUrlResults({
-        status: "error",
-        message: "Failed to check URL. Please try again.",
-      });
-      console.error("Error checking URL:", error);
-    }
-    setLoading(false);
-  };
-
   const checkIp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -487,6 +462,8 @@ export default function Home() {
         body: JSON.stringify({ ip }),
       });
       const data = await response.json();
+      console.log("IP scan response:", data);
+      console.log("Security analysis data in response:", data.virustotal || data.data?.virustotal);
       setIpResults(data);
 
       // Store in localStorage
@@ -579,48 +556,6 @@ export default function Home() {
     }
   };
 
-  const analyzeDomain = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setIsCached(false);
-
-    // Check localStorage
-    const storedDomains: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_domains") || "[]");
-    const cached = storedDomains.find((scan) => scan.input === domain);
-    if (cached) {
-      setDomainResults(cached.result);
-      setIsCached(true);
-      setLoading(false);
-      return;
-    }
-
-    const API_URL = "http://localhost:4000";
-    try {
-      const response = await fetch(`${API_URL}/api/analyze-domain`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain }),
-      });
-      const data = await response.json();
-      setDomainResults(data);
-
-      // Store in localStorage
-      storedDomains.push({
-        input: domain,
-        result: data,
-        timestamp: new Date().toISOString(),
-      });
-      localStorage.setItem("cyberregis_domains", JSON.stringify(storedDomains));
-    } catch (error) {
-      setDomainResults({
-        status: "error",
-        message: "Failed to analyze domain. Please try again.",
-      });
-      console.error("Error analyzing domain:", error);
-    }
-    setLoading(false);
-  };
-
   const fetchFileContent = async (domain: string, fileType: 'robots' | 'security') => {
     setLoadingFile(true);
     try {
@@ -667,6 +602,7 @@ export default function Home() {
     if (results.data?.pcap_analysis) {
       return (
         <div className="space-y-4">
+          {/* File Information */}
           {results.data.metadata && (
             <div className="space-y-1">
               <h4 className="text-sm font-semibold">File Information</h4>
@@ -680,19 +616,153 @@ export default function Home() {
               </div>
             </div>
           )}
-          {results.data.virustotal?.data?.attributes?.stats && (
-            <div className="space-y-1">
-              <h4 className="text-sm font-semibold">VirusTotal Stats</h4>
-              <div className="text-xs space-y-1">
-                {Object.entries(results.data.virustotal.data.attributes.stats).map(([key, value]) => (
-                  <div key={key} className="flex justify-between">
-                    <span className="text-muted-foreground">{key}:</span>
-                    <span>{value}</span>
+
+          {/* Enhanced Security Analysis Results */}
+          {results.data.virustotal && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
+              
+              {/* VirusTotal Summary */}
+              {results.data.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <h5 className="font-medium text-blue-900 mb-2 text-xs">📋 Quick Summary</h5>
+                  <pre className="text-xs text-blue-800 whitespace-pre-wrap">{results.data.virustotal_summary}</pre>
+                </div>
+              )}
+
+              {/* Enhanced Security Analysis Data */}
+              {results.data.virustotal.risk_assessment ? (
+                <div className="bg-gray-50 p-3 rounded-lg space-y-3">
+                  {/* Risk Score Display */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium">Risk Score:</span>
+                      <span className={`text-lg font-bold ${
+                        results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
+                        results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
+                        results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
+                      }`}>
+                        {results.data.virustotal.risk_assessment.risk_score}/100
+                      </span>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full ${
+                          results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
+                          results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
+                          results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${results.data.virustotal.risk_assessment.risk_score}%` }}
+                      ></div>
+                    </div>
                   </div>
-                ))}
-              </div>
+
+                  {/* Risk Level Badge */}
+                  <div>
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                      results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                      results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
+                      results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      Risk Level: {results.data.virustotal.risk_assessment.risk_level}
+                    </span>
+                  </div>
+
+                  {/* Detection Statistics */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-red-600">
+                        {results.data.virustotal.risk_assessment.malicious_count || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Malicious</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-orange-600">
+                        {results.data.virustotal.risk_assessment.suspicious_count || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Suspicious</div>
+                    </div>
+                  </div>
+
+                  {/* Additional Details */}
+                  <div className="space-y-1 text-xs text-gray-600">
+                    {results.data.virustotal.risk_assessment.detection_ratio && (
+                      <div>Detection Ratio: {results.data.virustotal.risk_assessment.detection_ratio}</div>
+                    )}
+                    {results.data.virustotal.risk_assessment.total_engines && (
+                      <div>Total Engines: {results.data.virustotal.risk_assessment.total_engines}</div>
+                    )}
+                    {results.data.virustotal.metadata?.reputation && (
+                      <div>Reputation: {results.data.virustotal.metadata.reputation}</div>
+                    )}
+                    {results.data.virustotal.metadata?.file_type && (
+                      <div>File Type: {results.data.virustotal.metadata.file_type}</div>
+                    )}
+                    {results.data.virustotal.metadata?.analysis_date && (
+                      <div>Analysis Date: {new Date(results.data.virustotal.metadata.analysis_date * 1000).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Fallback to legacy structure */
+                results.data.virustotal?.data?.attributes?.stats && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold">Security Stats</h4>
+                    <div className="text-xs space-y-1">
+                      {Object.entries(results.data.virustotal.data.attributes.stats).map(([key, value]) => (
+                        <div key={key} className="flex items-center justify-between">
+                          <span className="text-muted-foreground">{key}:</span>
+                          <span>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* Error Handling */}
+              {results.data.virustotal.error && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="text-yellow-800 text-xs">
+                    ⚠️ Security Analysis Issue: {results.data.virustotal.error}
+                  </div>
+                  <div className="text-xs text-yellow-700 mt-2">
+                    This could be due to:
+                    <ul className="list-disc list-inside mt-1 ml-4">
+                      <li>Rate limiting (try again later)</li>
+                      <li>Invalid API key</li>
+                      <li>File analysis timeout</li>
+                      <li>Network connectivity issues</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Engine Results - Fallback to legacy structure */}
+              {results.data.virustotal?.data?.attributes?.results && (
+                <div className="space-y-1">
+                  <h4 className="text-sm font-semibold">Engine Results</h4>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
+                      <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
+                        <span>{engine}</span>
+                        <span className={`${result.category === 'malicious' ? 'text-red-500' : 
+                                           result.category === 'suspicious' ? 'text-yellow-500' : 
+                                           'text-green-500'}`}>
+                          {result.category}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
+
+          {/* Protocol Distribution */}
           {results.data.pcap_analysis && (
             <div className="space-y-1">
               <h4 className="text-sm font-semibold">Protocol Distribution</h4>
@@ -706,6 +776,8 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* Protocol Chart */}
           {results.data.chart_base64 && (
             <div className="space-y-1">
               <h4 className="text-sm font-semibold">Protocol Chart</h4>
@@ -729,6 +801,18 @@ export default function Home() {
       const riskAssessment = results.risk_assessment || results.data?.risk_assessment;
       const technicalDetails = results.technical_details || results.data?.technical_details;
       const recommendations = results.recommendations || results.data?.recommendations;
+      const virustotalData = results.data?.virustotal;
+      
+      // Debug logging
+      console.log("IP Results Debug:", {
+        ipDetails,
+        riskAssessment,
+        technicalDetails,
+        recommendations,
+        virustotalData,
+        fullResults: results
+      });
+      
       return (
         <div className="space-y-3">
           {/* IP Details */}
@@ -775,6 +859,168 @@ export default function Home() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* VirusTotal Analysis for IP */}
+          {virustotalData && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
+              
+              {/* VirusTotal Summary */}
+              {results.data?.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <h5 className="font-medium text-blue-900 mb-2 text-xs">📋 Quick Summary</h5>
+                  <pre className="text-xs text-blue-800 whitespace-pre-wrap">{results.data.virustotal_summary}</pre>
+                </div>
+              )}
+
+              {/* Enhanced Security Analysis Data */}
+              {virustotalData.risk_assessment ? (
+                <div className="bg-gray-50 p-3 rounded-lg space-y-3">
+                  {/* Risk Score Display */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium">Risk Score:</span>
+                      <span className={`text-lg font-bold ${
+                        virustotalData.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
+                        virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
+                        virustotalData.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
+                      }`}>
+                        {virustotalData.risk_assessment.risk_score}/100
+                      </span>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full ${
+                          virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
+                          virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
+                          virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${virustotalData.risk_assessment.risk_score}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Risk Level Badge */}
+                  <div>
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                      virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                      virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
+                      virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      Risk Level: {virustotalData.risk_assessment.risk_level}
+                    </span>
+                  </div>
+
+                  {/* Detection Statistics */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-red-600">
+                        {virustotalData.risk_assessment.malicious_count || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Malicious</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-orange-600">
+                        {virustotalData.risk_assessment.suspicious_count || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Suspicious</div>
+                    </div>
+                  </div>
+
+                  {/* Additional Details */}
+                  <div className="space-y-1 text-xs text-gray-600">
+                    {virustotalData.risk_assessment.detection_ratio && (
+                      <div>Detection Ratio: {virustotalData.risk_assessment.detection_ratio}</div>
+                    )}
+                    {virustotalData.risk_assessment.total_engines && (
+                      <div>Total Engines: {virustotalData.risk_assessment.total_engines}</div>
+                    )}
+                    {virustotalData.metadata?.reputation && (
+                      <div>Reputation: {virustotalData.metadata.reputation}</div>
+                    )}
+                    {virustotalData.metadata?.file_type && (
+                      <div>File Type: {virustotalData.metadata.file_type}</div>
+                    )}
+                    {virustotalData.metadata?.analysis_date && (
+                      <div>Analysis Date: {new Date(virustotalData.metadata.analysis_date * 1000).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Fallback to legacy structure */
+                virustotalData?.data?.attributes?.stats && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold">Security Stats</h4>
+                    <div className="text-xs space-y-1">
+                      {Object.entries(virustotalData.data.attributes.stats).map(([key, value]) => (
+                        <div key={key} className="flex items-center justify-between">
+                          <span className="text-muted-foreground">{key}:</span>
+                          <span>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* Error Handling */}
+              {virustotalData.error && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="text-yellow-800 text-xs">
+                    ⚠️ Security Analysis Issue: {virustotalData.error}
+                  </div>
+                  <div className="text-xs text-yellow-700 mt-2">
+                    This could be due to:
+                    <ul className="list-disc list-inside mt-1 ml-4">
+                      <li>Rate limiting (try again later)</li>
+                      <li>Invalid API key</li>
+                      <li>IP analysis timeout</li>
+                      <li>Network connectivity issues</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Engine Results - Fallback to legacy structure */}
+              {virustotalData?.data?.attributes?.results && (
+                <div className="space-y-1">
+                  <h4 className="text-sm font-semibold">Engine Results</h4>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {Object.entries(virustotalData.data.attributes.results).slice(0, 8).map(([engine, result]) => (
+                      <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
+                        <span>{engine}</span>
+                        <span className={`${(result as any).category === 'malicious' ? 'text-red-500' : 
+                                           (result as any).category === 'suspicious' ? 'text-yellow-500' : 
+                                           'text-green-500'}`}>
+                          {(result as any).category}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VirusTotal Status - Show when no data is available */}
+          {!virustotalData && (
+            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+              <div className="flex items-center space-x-2">
+                <div className="text-gray-400">🦠</div>
+                <div className="text-xs text-gray-600">
+                  <strong>Security Analysis:</strong> No data available. This could mean:
+                  <ul className="list-disc list-inside mt-1 ml-2">
+                    <li>The backend API doesn't include security analysis data for IPs</li>
+                    <li>The IP hasn't been analyzed by our security systems</li>
+                    <li>There was an error retrieving security data</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1333,13 +1579,13 @@ export default function Home() {
           {/* VirusTotal Results - Clean stats */}
           {results.data.virustotal?.data?.attributes?.stats && (
             <div className="space-y-2">
-              <span className="text-sm font-medium">VirusTotal Analysis:</span>
+              <span className="text-sm font-medium">Security Analysis:</span>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {Object.entries(results.data.virustotal.data.attributes.stats).map(([key, value]) => (
                   <div key={key} className="text-center bg-muted/30 p-2 rounded">
                     <div className="text-lg font-bold">{value}</div>
                     <div className="text-xs text-muted-foreground capitalize">{key.replace('_', ' ')}</div>
-            </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1660,6 +1906,73 @@ export default function Home() {
     }
   };
 
+  const runIntegratedScan = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIntegratedLoading(true);
+    setIntegratedResults(null);
+
+    // Check localStorage for cached results
+    const storedIntegrated: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_integrated") || "[]");
+    const cached = storedIntegrated.find((scan) => scan.input === integratedInput);
+    if (cached) {
+      setIntegratedResults(cached.result as any);
+      setIsCached(true);
+      setIntegratedLoading(false);
+      return;
+    }
+
+    // Check if input is a URL or domain
+    const isUrl = integratedInput.startsWith('http://') || integratedInput.startsWith('https://');
+    const domain = isUrl ? new URL(integratedInput).hostname : integratedInput;
+
+    try {
+      // Run both scans in parallel
+      const [urlResponse, domainResponse] = await Promise.all([
+        fetch("http://localhost:4000/api/check-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: integratedInput }),
+        }),
+        fetch("http://localhost:4000/api/analyze-domain", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain }),
+        }),
+      ]);
+
+      const urlData = await urlResponse.json();
+      const domainData = await domainResponse.json();
+
+      setIntegratedResults({
+        urlResults: urlData,
+        domainResults: domainData,
+      });
+
+      // Store in localStorage
+      storedIntegrated.push({
+        input: integratedInput,
+        result: { urlResults: urlData, domainResults: domainData } as any,
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem("cyberregis_integrated", JSON.stringify(storedIntegrated));
+
+    } catch (error) {
+      setIntegratedResults({
+        urlResults: {
+          status: "error",
+          message: `Integrated scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        },
+        domainResults: {
+          status: "error",
+          message: `Integrated scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        },
+      });
+      console.error("Error in integrated scan:", error);
+    } finally {
+      setIntegratedLoading(false);
+    }
+  };
+
   const handleChatSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -1783,11 +2096,11 @@ export default function Home() {
         </Card>
 
         <Card className="border-primary/20 bg-card/50 backdrop-blur-sm mb-8">
-          <Tabs defaultValue="url" className="p-6">
-            <TabsList className="grid w-full grid-cols-6 lg:w-[750px] mb-6">
-              <TabsTrigger value="url" className="data-[state=active]:bg-primary/20 text-xs">
-                <Globe className="w-3 h-3 mr-1" />
-                URL
+          <Tabs defaultValue="integrated" className="p-6">
+            <TabsList className="grid w-full grid-cols-5 lg:w-[600px] mb-6">
+              <TabsTrigger value="integrated" className="data-[state=active]:bg-primary/20 text-xs">
+                <Eye className="w-3 h-3 mr-1" />
+                Domain Recon
               </TabsTrigger>
               <TabsTrigger value="ip" className="data-[state=active]:bg-primary/20 text-xs">
                 <Network className="w-3 h-3 mr-1" />
@@ -1796,10 +2109,6 @@ export default function Home() {
               <TabsTrigger value="network" className="data-[state=active]:bg-primary/20 text-xs">
                 <BarChart4 className="w-3 h-3 mr-1" />
                 Network
-              </TabsTrigger>
-              <TabsTrigger value="domain" className="data-[state=active]:bg-primary/20 text-xs">
-                <Eye className="w-3 h-3 mr-1" />
-                Domain
               </TabsTrigger>
               <TabsTrigger value="advanced" className="data-[state=active]:bg-primary/20 text-xs">
                 <Shield className="w-3 h-3 mr-1" />
@@ -1811,70 +2120,299 @@ export default function Home() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="url" className="space-y-6">
+            <TabsContent value="integrated" className="space-y-6">
               <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Phishing URL Scanner</h2>
-                <p className="text-sm text-muted-foreground">Analyze URLs for potential phishing threats</p>
+                <h2 className="text-2xl font-semibold">Domain Reconnaissance & URL Scanner</h2>
+                <p className="text-sm text-muted-foreground">
+                  Comprehensive analysis combining domain reconnaissance and URL threat detection in one scan
+                </p>
               </div>
               <Separator />
-              <form onSubmit={checkUrl} className="space-y-4">
+              <form onSubmit={runIntegratedScan} className="space-y-4">
                 <div className="flex space-x-2">
                   <Input
-                    type="url"
-                    placeholder="Enter website URL"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
+                    type="text"
+                    placeholder="Enter domain (e.g., example.com) or URL (e.g., https://example.com)"
+                    value={integratedInput}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      // Auto-add https:// if user starts with 'h'
+                      if (value.startsWith('h') && !value.startsWith('http')) {
+                        value = 'https://' + value.substring(1);
+                      }
+                      // Auto-add https:// if user enters just a domain without protocol
+                      else if (value && !value.includes('://') && !value.startsWith('http')) {
+                        if (value.includes('.') && !value.startsWith('www.')) {
+                          value = 'https://' + value;
+                        }
+                      }
+                      setIntegratedInput(value);
+                    }}
+                    onBlur={(e) => {
+                      let value = e.target.value;
+                      // Auto-add https:// if user enters just a domain without protocol
+                      if (value && !value.includes('://') && !value.startsWith('http')) {
+                        if (value.includes('.') && !value.startsWith('www.')) {
+                          value = 'https://' + value;
+                          setIntegratedInput(value);
+                        }
+                      }
+                    }}
                     required
                     className="bg-background/50"
                   />
                   <Button
                     type="submit"
-                    disabled={loading}
+                    disabled={integratedLoading}
                     className="bg-primary hover:bg-primary/90"
                   >
-                    {loading ? "Scanning..." : "Scan"}
+                    {integratedLoading ? "Running Scan..." : "Run Scan"}
                   </Button>
+                  {integratedResults && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setIntegratedResults(null);
+                        setIntegratedInput("");
+                        setIsCached(false);
+                      }}
+                      className="border-destructive/20 text-destructive hover:bg-destructive/10"
+                    >
+                      Clear Results
+                    </Button>
+                  )}
                 </div>
-                {urlResults && (
-                  <Alert
-                    className={`bg-${
-                      urlResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${urlResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                      {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                          Showing cached results from {new Date(urlResults.timestamp || "").toLocaleString()}
-                        </p>
-                      )}
+                {integratedLoading && (
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                      <span className="text-sm text-muted-foreground">Running comprehensive security analysis...</span>
+                    </div>
+                  </div>
+                )}
+                {integratedResults && (
+                  <div className="space-y-6">
+                    {/* Scan Summary Header */}
+                    <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h3 className="text-lg font-semibold text-primary">Scan Summary</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Input: <span className="font-mono text-primary">{integratedInput}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {isCached ? "Showing cached results" : "Fresh scan completed"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold text-primary">
+                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "⚠️" : "✅"}
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={urlViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setUrlViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={urlViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setUrlViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
+                          <div className="text-xs text-muted-foreground">
+                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "High Risk" : "Low Risk"}
                           </div>
                         </div>
-                        {formatResults(urlResults, urlViewMode)}
                       </div>
-                    </AlertDescription>
-                  </Alert>
+                    </div>
+
+                    {/* URL Analysis Results */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-primary">URL Threat Analysis</h3>
+                        {integratedResults.urlResults?.timestamp && (
+                          <span className="text-xs text-muted-foreground">
+                            Scanned: {new Date(integratedResults.urlResults.timestamp).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <Alert className="bg-primary/10 border-primary/20">
+                        <AlertDescription>
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                {isCached && (
+                                  <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 text-xs">
+                                    Cached Results
+                                  </Badge>
+                                )}
+                                <span className="text-sm text-muted-foreground">View:</span>
+                                <Button
+                                  variant={integratedViewMode === 'normal' ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => setIntegratedViewMode('normal')}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  Normal
+                                </Button>
+                                <Button
+                                  variant={integratedViewMode === 'json' ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => setIntegratedViewMode('json')}
+                                  className="h-7 px-2 text-xs"
+                                >
+                                  JSON
+                                </Button>
+                              </div>
+                            </div>
+                            {integratedViewMode === 'json' ? (
+                              <div className="bg-slate-900 rounded-md p-4 overflow-auto">
+                                <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
+                                  {JSON.stringify(integratedResults.urlResults, null, 2)}
+                                </pre>
+                              </div>
+                            ) : (
+                              formatResults(integratedResults.urlResults, 'normal')
+                            )}
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+
+                    {/* Domain Analysis Results */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-primary">Domain Reconnaissance</h3>
+                        {integratedResults.domainResults?.timestamp && (
+                          <span className="text-xs text-muted-foreground">
+                            Scanned: {new Date(integratedResults.domainResults.timestamp).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <Alert className="bg-primary/10 border-primary/20">
+                        <AlertDescription>
+                          <div className="space-y-4">
+                            {integratedViewMode === 'json' ? (
+                              <div className="bg-slate-900 rounded-md p-4 overflow-auto">
+                                <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
+                                  {JSON.stringify(integratedResults.domainResults, null, 2)}
+                                </pre>
+                              </div>
+                            ) : (
+                              formatResults(integratedResults.domainResults, 'normal')
+                            )}
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+
+                    {/* Combined Summary */}
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold text-primary">Combined Security Assessment</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Overall Risk Level */}
+                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Overall Risk Level</h4>
+                          <div className="text-2xl font-bold text-center">
+                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious || 
+                             integratedResults.domainResults?.status === "error" ? (
+                              <span className="text-red-500">HIGH</span>
+                            ) : (
+                              <span className="text-green-500">LOW</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* SSL Status */}
+                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">SSL Certificate</h4>
+                          <div className="text-2xl font-bold text-center">
+                            {integratedResults.urlResults?.data?.additional_checks?.ssl_security?.valid ? (
+                              <span className="text-green-500">VALID</span>
+                            ) : (
+                              <span className="text-red-500">INVALID</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Domain Age */}
+                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Domain Age</h4>
+                          <div className="text-2xl font-bold text-center">
+                            {integratedResults.domainResults?.domain_info?.whois?.creation_date ? (
+                              <span className="text-blue-500">
+                                {Math.floor((Date.now() - new Date(integratedResults.domainResults.domain_info.whois.creation_date).getTime()) / (1000 * 60 * 60 * 24 * 365))}y
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">N/A</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Subdomain Count */}
+                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Subdomains</h4>
+                          <div className="text-2xl font-bold text-center">
+                            {integratedResults.domainResults?.domain_info?.subdomains ? (
+                              <span className="text-purple-500">
+                                {integratedResults.domainResults.domain_info.subdomains.length}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Additional Security Insights */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        {/* Security Features */}
+                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                          <h4 className="font-medium text-sm text-muted-foreground mb-3">Security Features</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">DNSSEC:</span>
+                              <Badge variant={integratedResults.domainResults?.domain_info?.security_features?.dnssec ? "default" : "secondary"} className="text-xs">
+                                {integratedResults.domainResults?.domain_info?.security_features?.dnssec ? "Enabled" : "Disabled"}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">DMARC:</span>
+                              <Badge variant={integratedResults.domainResults?.domain_info?.security_features?.dmarc ? "default" : "secondary"} className="text-xs">
+                                {integratedResults.domainResults?.domain_info?.security_features?.dmarc ? "Present" : "Missing"}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">SPF:</span>
+                              <Badge variant={integratedResults.domainResults?.domain_info?.security_features?.spf ? "default" : "secondary"} className="text-xs">
+                                {integratedResults.domainResults?.domain_info?.security_features?.spf ? "Present" : "Missing"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Threat Indicators */}
+                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
+                          <h4 className="font-medium text-sm text-muted-foreground mb-3">Threat Indicators</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">Malicious URL:</span>
+                              <Badge variant={integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "destructive" : "default"} className="text-xs">
+                                {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "Yes" : "No"}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">Suspicious Patterns:</span>
+                              <Badge variant={integratedResults.urlResults?.data?.additional_checks?.suspicious_patterns?.found ? "destructive" : "default"} className="text-xs">
+                                {integratedResults.urlResults?.data?.additional_checks?.suspicious_patterns?.found ? "Found" : "None"}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">Security Score:</span>
+                              <Badge variant="outline" className="text-xs">
+                                {integratedResults.urlResults?.data?.virustotal?.risk_assessment ? 
+                                  `${integratedResults.urlResults.data.virustotal.risk_assessment.malicious_count || 0} / ${integratedResults.urlResults.data.virustotal.risk_assessment.total_engines || 0}` :
+                                  integratedResults.urlResults?.data?.virustotal?.data?.attributes?.stats ? 
+                                    `${integratedResults.urlResults.data.virustotal.data.attributes.stats.malicious || 0} / ${integratedResults.urlResults.data.virustotal.data.attributes.stats.total || 0}` :
+                                    '0 / 0'
+                                }
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </form>
             </TabsContent>
@@ -1882,7 +2420,9 @@ export default function Home() {
             <TabsContent value="ip" className="space-y-6">
               <div className="space-y-2">
                 <h2 className="text-2xl font-semibold">IP Reputation Scanner</h2>
-                <p className="text-sm text-muted-foreground">Check IP addresses for malicious activity</p>
+                <p className="text-sm text-muted-foreground">
+                  Check IP addresses for malicious activity with comprehensive security analysis
+                </p>
               </div>
               <Separator />
               <form onSubmit={checkIp} className="space-y-4">
@@ -1901,9 +2441,20 @@ export default function Home() {
                     disabled={loading}
                     className="bg-primary hover:bg-primary/90"
                   >
-                    {loading ? "Scanning..." : "Scan"}
+                    {loading ? "Scanning..." : "Scan IP"}
                   </Button>
                 </div>
+                
+                {/* Enhanced Loading State for IP Scanner */}
+                {loading && (
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                      <span className="text-sm text-muted-foreground">Analyzing IP address and running security checks...</span>
+                    </div>
+                  </div>
+                )}
+                
                 {ipResults && (
                   <Alert
                     className={`bg-${
@@ -1952,7 +2503,7 @@ export default function Home() {
               <div className="space-y-2">
                 <h2 className="text-2xl font-semibold">Network Log Analysis</h2>
                 <p className="text-sm text-muted-foreground">
-                  Upload PCAP files for comprehensive network traffic analysis
+                  Upload PCAP files for comprehensive network traffic analysis with enhanced security scanning
                 </p>
               </div>
               <Separator />
@@ -1973,6 +2524,9 @@ export default function Home() {
                       <h3 className="text-lg font-medium">Upload PCAP File</h3>
                       <p className="text-sm text-muted-foreground">
                         Drag and drop your PCAP file here, or click to browse
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Files will be analyzed for protocols, traffic patterns, and scanned for security threats
                       </p>
                     </div>
                     {selectedFile ? (
@@ -2003,6 +2557,22 @@ export default function Home() {
                     {loading ? "Analyzing..." : "Analyze Network Log"}
                   </Button>
                 </div>
+                
+                {/* Enhanced Loading State */}
+                {loading && (
+                  <div className="text-center py-6">
+                    <div className="inline-flex items-center space-x-3">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Analyzing PCAP file...</p>
+                        <p className="text-xs text-muted-foreground">
+                          This may take a few minutes for large files
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {logResults && (
                   <Alert
                     className={`bg-${
@@ -2012,19 +2582,19 @@ export default function Home() {
                     <AlertDescription>
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        {isCached && (
+                          <div className="space-y-2">
+                            {isCached && (
                               <p className="text-sm text-muted-foreground">
-                            Showing cached results from {new Date(logResults.timestamp || "").toLocaleString()}
-                          </p>
-                        )}
-                        <p
-                          className={`text-${
-                            logResults.status === "error" ? "destructive" : "primary"
-                          }`}
-                        >
-                          {logResults.message || `Analysis completed for ${selectedFile?.name}`}
-                        </p>
+                                Showing cached results from {new Date(logResults.timestamp || "").toLocaleString()}
+                              </p>
+                            )}
+                            <p
+                              className={`text-${
+                                logResults.status === "error" ? "destructive" : "primary"
+                              }`}
+                            >
+                              {logResults.message || `Analysis completed for ${selectedFile?.name}`}
+                            </p>
                           </div>
                           {logResults.data && (
                             <div className="flex items-center space-x-2">
@@ -2049,77 +2619,6 @@ export default function Home() {
                           )}
                         </div>
                         {logResults.data && <div className="mt-4">{formatResults(logResults, logViewMode)}</div>}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </form>
-            </TabsContent>
-
-            <TabsContent value="domain" className="space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Domain Reconnaissance</h2>
-                <p className="text-sm text-muted-foreground">
-                  Comprehensive domain analysis including DNS records, SSL certificates, subdomains, and security configurations
-                </p>
-              </div>
-              <Separator />
-              <form onSubmit={analyzeDomain} className="space-y-4">
-                <div className="flex space-x-2">
-                  <Input
-                    type="text"
-                    placeholder="Enter domain name (e.g., example.com)"
-                    value={domain}
-                    onChange={(e) => setDomain(e.target.value)}
-                    required
-                    pattern="^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
-                    className="bg-background/50"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    {loading ? "Analyzing..." : "Analyze"}
-                  </Button>
-                </div>
-                {domainResults && (
-                  <Alert
-                    className={`bg-${
-                      domainResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${domainResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(domainResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={domainViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setDomainViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={domainViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setDomainViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(domainResults, domainViewMode)}
                       </div>
                     </AlertDescription>
                   </Alert>
