@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Shield, Globe, Network, Eye, Activity, FileText, BarChart4, Upload, FileUp, MessageSquare, ExternalLink, X } from "lucide-react";
+import { Shield, Globe, Network, Eye, Activity, FileText, BarChart4, Upload, FileUp, MessageSquare, ExternalLink, X, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,7 +19,7 @@ import remarkGfm from "remark-gfm";
 // Define interface for API responses
 interface ScanResult {
   data?: {
-    url_analysis?: { 
+    url_analysis?: {
       input_url: string;
       parsed_details?: {
         domain: string;
@@ -29,7 +30,7 @@ interface ScanResult {
       };
       security_check_time?: string;
     };
-    threat_analysis?: { 
+    threat_analysis?: {
       is_malicious: boolean;
       threats_found?: number;
       threat_details?: any[];
@@ -39,7 +40,7 @@ interface ScanResult {
       };
     };
     additional_checks?: {
-      domain_analysis?: { 
+      domain_analysis?: {
         risk_level: string;
         risk_score?: number;
         risk_factors?: string[];
@@ -58,11 +59,11 @@ interface ScanResult {
           status: string;
         };
       };
-      ssl_security?: { 
+      ssl_security?: {
         valid: boolean;
         status_code?: number;
       };
-      suspicious_patterns?: { 
+      suspicious_patterns?: {
         risk_level: string;
         found: boolean;
         matches?: string[];
@@ -276,7 +277,7 @@ interface ScanResult {
   status: "success" | "error";
   timestamp?: string;
   message?: string;
-  
+
   // Advanced Scanner fields (root level)
   ports?: Array<{
     port: number;
@@ -301,13 +302,7 @@ interface ScanResult {
     severity: string;
     recommendation?: string;
   }>;
-  ssl_analysis?: {
-    basic_info?: any;
-    cipher_info?: any;
-    domain?: string;
-    timestamp?: string;
-  };
-  
+
   // Security Scanner fields (root level)
   headers?: {
     [headerName: string]: {
@@ -346,8 +341,20 @@ interface ScanResult {
 // Interface for stored scan data
 interface StoredScan {
   input: string;
-  result: ScanResult;
+  result: any;
   timestamp: string;
+}
+
+type ScheduledScanType = "ip" | "domain" | "port" | "vuln" | "headers" | "email";
+
+interface ScheduledScan {
+  input: string;
+  type: ScheduledScanType;
+  intervalMinutes: number;
+  nextCheck: string;
+  lastChecked?: string;
+  status?: "idle" | "running" | "error";
+  errorMessage?: string;
 }
 
 // Interface for chatbot messages
@@ -383,11 +390,11 @@ export default function Home() {
   ]);
   const [chatInput, setChatInput] = useState("");
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  
+
   // View mode states for each scan type
   const [ipViewMode, setIpViewMode] = useState<'normal' | 'json'>('normal');
   const [logViewMode, setLogViewMode] = useState<'normal' | 'json'>('normal');
-  
+
   // File content modal state
   const [fileContent, setFileContent] = useState<{
     domain: string;
@@ -412,10 +419,6 @@ export default function Home() {
   const [vulnLoading, setVulnLoading] = useState(false);
   const [vulnViewMode, setVulnViewMode] = useState<'normal' | 'json'>('normal');
 
-  const [sslDomain, setSslDomain] = useState("");
-  const [sslResults, setSslResults] = useState<any>(null);
-  const [sslLoading, setSslLoading] = useState(false);
-  const [sslViewMode, setSslViewMode] = useState<'normal' | 'json'>('normal');
 
   // Security Scanner states
   const [headerUrl, setHeaderUrl] = useState("");
@@ -428,15 +431,426 @@ export default function Home() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailViewMode, setEmailViewMode] = useState<'normal' | 'json'>('normal');
 
-  // Load stored scans from localStorage on mount
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const SCHEDULE_STORAGE_KEY = "cyberregis_schedules";
+
+  const [cachedIps, setCachedIps] = useState<StoredScan[]>([]);
+  const [cachedIntegrated, setCachedIntegrated] = useState<StoredScan[]>([]);
+  const [cachedLogs, setCachedLogs] = useState<StoredScan[]>([]);
+  const [cachedPorts, setCachedPorts] = useState<StoredScan[]>([]);
+  const [cachedVulns, setCachedVulns] = useState<StoredScan[]>([]);
+  const [cachedHeaders, setCachedHeaders] = useState<StoredScan[]>([]);
+  const [cachedEmails, setCachedEmails] = useState<StoredScan[]>([]);
+  const [scheduledScans, setScheduledScans] = useState<ScheduledScan[]>([]);
+  const scheduledScansRef = useRef<ScheduledScan[]>([]);
+
+  const refreshCachedIps = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const storedIps: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_ips") || "[]");
+      setCachedIps(storedIps);
+    } catch (error) {
+      console.error("Failed to load cached IPs", error);
+      setCachedIps([]);
+    }
+  };
+
+  const refreshCachedIntegrated = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_integrated") || "[]");
+      setCachedIntegrated(stored);
+    } catch (error) {
+      console.error("Failed to load cached integrated scans", error);
+      setCachedIntegrated([]);
+    }
+  };
+
+  const refreshCachedLogs = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_logs") || "[]");
+      setCachedLogs(stored);
+    } catch (error) {
+      console.error("Failed to load cached logs", error);
+      setCachedLogs([]);
+    }
+  };
+
+  const refreshCachedPorts = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_ports") || "[]");
+      setCachedPorts(stored);
+    } catch (error) {
+      console.error("Failed to load cached port scans", error);
+      setCachedPorts([]);
+    }
+  };
+
+  const refreshCachedVulns = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_vuln") || "[]");
+      setCachedVulns(stored);
+    } catch (error) {
+      console.error("Failed to load cached vulnerability scans", error);
+      setCachedVulns([]);
+    }
+  };
+
+  const refreshCachedHeaders = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_headers") || "[]");
+      setCachedHeaders(stored);
+    } catch (error) {
+      console.error("Failed to load cached header scans", error);
+      setCachedHeaders([]);
+    }
+  };
+
+  const refreshCachedEmails = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_email") || "[]");
+      setCachedEmails(stored);
+    } catch (error) {
+      console.error("Failed to load cached email scans", error);
+      setCachedEmails([]);
+    }
+  };
+
+  const upsertStoredScan = (key: string, entry: StoredScan) => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored: StoredScan[] = JSON.parse(localStorage.getItem(key) || "[]");
+      const index = stored.findIndex((scan) => scan.input === entry.input);
+      if (index >= 0) {
+        stored[index] = entry;
+      } else {
+        stored.push(entry);
+      }
+      localStorage.setItem(key, JSON.stringify(stored));
+      switch (key) {
+        case "cyberregis_ips":
+          refreshCachedIps();
+          break;
+        case "cyberregis_integrated":
+          refreshCachedIntegrated();
+          break;
+        case "cyberregis_logs":
+          refreshCachedLogs();
+          break;
+        case "cyberregis_ports":
+          refreshCachedPorts();
+          break;
+        case "cyberregis_vuln":
+          refreshCachedVulns();
+          break;
+        case "cyberregis_headers":
+          refreshCachedHeaders();
+          break;
+        case "cyberregis_email":
+          refreshCachedEmails();
+          break;
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error("Failed to persist cached scan", error);
+    }
+  };
+
+  const persistSchedules = (items: ScheduledScan[]) => {
+    if (typeof window === "undefined") return;
+    try {
+      const payload = items.map(({ status, errorMessage, ...rest }) => rest);
+      localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error("Failed to persist monitoring schedules", error);
+    }
+  };
+
+  const loadSchedules = (): ScheduledScan[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(SCHEDULE_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as Array<Omit<ScheduledScan, "status" | "errorMessage">>;
+      return parsed.map((item) => {
+        const nextCheck =
+          item.nextCheck || new Date(Date.now() + item.intervalMinutes * 60 * 1000).toISOString();
+        return {
+          ...item,
+          type: item.type ?? "ip",
+          nextCheck,
+          status: "idle" as const,
+        };
+      });
+    } catch (error) {
+      console.error("Failed to load monitoring schedules", error);
+      return [];
+    }
+  };
+
+  const formatTimestamp = (iso?: string) => {
+    if (!iso) return "—";
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return "—";
+    }
+    return date.toLocaleString();
+  };
+
+  useEffect(() => {
+    scheduledScansRef.current = scheduledScans;
+  }, [scheduledScans]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      scheduledScansRef.current.forEach((item) => {
+        if (
+          item.status !== "running" &&
+          new Date(item.nextCheck).getTime() <= now &&
+          item.intervalMinutes > 0
+        ) {
+          recheckScheduledScan(item);
+        }
+      });
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleScheduleChange = (input: string, type: ScheduledScanType, value: string) => {
+    if (value === "off") {
+      setScheduledScans((prev) => {
+        const updated = prev.filter((item) => !(item.input === input && item.type === type));
+        persistSchedules(updated);
+        return updated;
+      });
+      return;
+    }
+
+    const intervalMinutes = parseInt(value, 10);
+    const nextCheck = new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString();
+
+    setScheduledScans((prev) => {
+      const existing = prev.find((item) => item.input === input && item.type === type);
+      let updated: ScheduledScan[];
+      if (existing) {
+        updated = prev.map((item) =>
+          item.input === input && item.type === type
+            ? { ...item, intervalMinutes, nextCheck, status: "idle" as const }
+            : item
+        );
+      } else {
+        updated = [
+          ...prev,
+          {
+            input,
+            type,
+            intervalMinutes,
+            nextCheck,
+            status: "idle" as const,
+          },
+        ];
+      }
+      persistSchedules(updated);
+      return updated;
+    });
+  };
+
+  const recheckScheduledScan = async (item: ScheduledScan) => {
+    setScheduledScans((prev) => {
+      const updated = prev.map((entry) =>
+        entry.input === item.input && entry.type === item.type
+          ? { ...entry, status: "running" as const, errorMessage: undefined }
+          : entry
+      );
+      persistSchedules(updated);
+      return updated;
+    });
+
+    try {
+      const nowIso = new Date().toISOString();
+      switch (item.type) {
+        case "ip": {
+          const response = await fetch(`${API_URL}/api/check-ip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ip: item.input }),
+          });
+          if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+          const data = await response.json();
+          upsertStoredScan("cyberregis_ips", {
+            input: item.input,
+            result: data,
+            timestamp: nowIso,
+          });
+          break;
+        }
+        case "domain": {
+          const isUrl = item.input.startsWith("http://") || item.input.startsWith("https://");
+          const url = isUrl ? item.input : `https://${item.input}`;
+          const domain = isUrl ? new URL(item.input).hostname : item.input;
+          const [urlResponse, domainResponse] = await Promise.all([
+            fetch(`${API_URL}/api/check-url`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url }),
+            }),
+            fetch(`${API_URL}/api/analyze-domain`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ domain }),
+            }),
+          ]);
+          if (!urlResponse.ok || !domainResponse.ok) {
+            throw new Error(
+              `Domain refresh failed (${urlResponse.status}/${domainResponse.status})`
+            );
+          }
+          const urlData = await urlResponse.json();
+          const domainData = await domainResponse.json();
+          upsertStoredScan("cyberregis_integrated", {
+            input: item.input,
+            result: { urlResults: urlData, domainResults: domainData },
+            timestamp: nowIso,
+          });
+          break;
+        }
+        case "port": {
+          const response = await fetch(`${API_URL}/api/scan-ports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: item.input }),
+          });
+          if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+          const data = await response.json();
+          upsertStoredScan("cyberregis_ports", {
+            input: item.input,
+            result: data,
+            timestamp: nowIso,
+          });
+          break;
+        }
+        case "vuln": {
+          const response = await fetch(`${API_URL}/api/vulnerability-scan`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: item.input }),
+          });
+          if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+          const data = await response.json();
+          upsertStoredScan("cyberregis_vuln", {
+            input: item.input,
+            result: data,
+            timestamp: nowIso,
+          });
+          break;
+        }
+        case "headers": {
+          const response = await fetch(`${API_URL}/api/security-headers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: item.input }),
+          });
+          if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+          const data = await response.json();
+          upsertStoredScan("cyberregis_headers", {
+            input: item.input,
+            result: data,
+            timestamp: nowIso,
+          });
+          break;
+        }
+        case "email": {
+          const response = await fetch(`${API_URL}/api/email-security`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ domain: item.input }),
+          });
+          if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+          const data = await response.json();
+          upsertStoredScan("cyberregis_email", {
+            input: item.input,
+            result: data,
+            timestamp: nowIso,
+          });
+          break;
+        }
+        default:
+          throw new Error("Automatic refresh is not supported for this artefact.");
+      }
+
+      const nextCheck = new Date(Date.now() + item.intervalMinutes * 60 * 1000).toISOString();
+      const lastChecked = nowIso;
+      setScheduledScans((prev) => {
+        const updated = prev.map((entry) =>
+          entry.input === item.input && entry.type === item.type
+            ? { ...entry, lastChecked, nextCheck, status: "idle" as const, errorMessage: undefined }
+            : entry
+        );
+        persistSchedules(updated);
+        return updated;
+      });
+    } catch (error) {
+      console.error("Error refreshing scheduled scan", error);
+      const nextCheck = new Date(Date.now() + item.intervalMinutes * 60 * 1000).toISOString();
+      const lastChecked = new Date().toISOString();
+      setScheduledScans((prev) => {
+        const updated = prev.map((entry) =>
+          entry.input === item.input && entry.type === item.type
+            ? {
+              ...entry,
+              lastChecked,
+              nextCheck,
+              status: "error" as const,
+              errorMessage: error instanceof Error ? error.message : "Unknown error",
+            }
+            : entry
+        );
+        persistSchedules(updated);
+        return updated;
+      });
+    }
+  };
+
+  const handleManualRefresh = (item: ScheduledScan) => {
+    recheckScheduledScan(item);
+  };
+
+  const intervalOptions = [
+    { label: "Disabled", value: "off" },
+    { label: "Every minute", value: "1" },
+    { label: "Every 5 minutes", value: "5" },
+    { label: "Every 15 minutes", value: "15" },
+    { label: "Every 30 minutes", value: "30" },
+    { label: "Every hour", value: "60" },
+  ];
+
+  const getScheduleFor = (input: string, type: ScheduledScanType, schedules: ScheduledScan[]) =>
+    schedules.find((item) => item.input === input && item.type === type);
+
   useEffect(() => {
     // Set initial chat message timestamp on client side to avoid hydration mismatch
-    setChatMessages(prev => prev.map(msg => 
+    setChatMessages(prev => prev.map(msg =>
       msg.id === 1 ? { ...msg, timestamp: new Date().toLocaleTimeString() } : msg
     ));
-    
-    // Note: Monitoring results endpoint is not implemented yet
-    // Will be added when the backend is ready
+    if (typeof window !== "undefined") {
+      refreshCachedIps();
+      refreshCachedIntegrated();
+      refreshCachedLogs();
+      refreshCachedPorts();
+      refreshCachedVulns();
+      refreshCachedHeaders();
+      refreshCachedEmails();
+      const loadedSchedules = loadSchedules();
+      setScheduledScans(loadedSchedules);
+    }
   }, []);
 
   const checkIp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -454,7 +868,6 @@ export default function Home() {
       return;
     }
 
-    const API_URL = "http://localhost:4000";
     try {
       const response = await fetch(`${API_URL}/api/check-ip`, {
         method: "POST",
@@ -466,13 +879,11 @@ export default function Home() {
       console.log("Security analysis data in response:", data.virustotal || data.data?.virustotal);
       setIpResults(data);
 
-      // Store in localStorage
-      storedIps.push({
+      upsertStoredScan("cyberregis_ips", {
         input: ip,
         result: data,
         timestamp: new Date().toISOString(),
       });
-      localStorage.setItem("cyberregis_ips", JSON.stringify(storedIps));
     } catch (error) {
       setIpResults({
         status: "error",
@@ -523,7 +934,7 @@ export default function Home() {
       formData.append("file", selectedFile);
       console.log("Uploading file:", selectedFile.name, selectedFile.size);
 
-      const response = await fetch("http://localhost:4000/api/analyze-pcap", {
+      const response = await fetch(`${API_URL}/api/analyze-pcap`, {
         method: "POST",
         body: formData,
       });
@@ -539,12 +950,11 @@ export default function Home() {
       setLogResults(data);
 
       // Store in localStorage
-      storedLogs.push({
+      upsertStoredScan("cyberregis_logs", {
         input: selectedFile.name,
         result: data,
         timestamp: new Date().toISOString(),
       });
-      localStorage.setItem("cyberregis_logs", JSON.stringify(storedLogs));
     } catch (error) {
       setLogResults({
         status: "error",
@@ -559,14 +969,14 @@ export default function Home() {
   const fetchFileContent = async (domain: string, fileType: 'robots' | 'security') => {
     setLoadingFile(true);
     try {
-      const response = await fetch("http://localhost:4000/api/security-file-content", {
+      const response = await fetch(`${API_URL}/api/security-file-content`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domain, file_type: fileType }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.status === "success") {
         setFileContent(data.file_info);
         setFileModalOpen(true);
@@ -621,7 +1031,7 @@ export default function Home() {
           {results.data.virustotal && (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
-              
+
               {/* VirusTotal Summary */}
               {results.data.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
                 <div className="bg-blue-50 p-3 rounded-lg">
@@ -637,23 +1047,21 @@ export default function Home() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium">Risk Score:</span>
-                      <span className={`text-lg font-bold ${
-                        results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
+                      <span className={`text-lg font-bold ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
                         results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
-                        results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
-                      }`}>
+                          results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
+                        }`}>
                         {results.data.virustotal.risk_assessment.risk_score}/100
                       </span>
                     </div>
-                    
+
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${
-                          results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
+                      <div
+                        className={`h-2 rounded-full ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
                           results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
-                          results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
-                        }`}
+                            results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
                         style={{ width: `${results.data.virustotal.risk_assessment.risk_score}%` }}
                       ></div>
                     </div>
@@ -661,12 +1069,11 @@ export default function Home() {
 
                   {/* Risk Level Badge */}
                   <div>
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                      results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
                       results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
-                      results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
+                        results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                      }`}>
                       Risk Level: {results.data.virustotal.risk_assessment.risk_level}
                     </span>
                   </div>
@@ -749,9 +1156,9 @@ export default function Home() {
                     {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
                       <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
                         <span>{engine}</span>
-                        <span className={`${result.category === 'malicious' ? 'text-red-500' : 
-                                           result.category === 'suspicious' ? 'text-yellow-500' : 
-                                           'text-green-500'}`}>
+                        <span className={`${result.category === 'malicious' ? 'text-red-500' :
+                          result.category === 'suspicious' ? 'text-yellow-500' :
+                            'text-green-500'}`}>
                           {result.category}
                         </span>
                       </div>
@@ -793,16 +1200,16 @@ export default function Home() {
     }
 
     // Handle IP-specific results (check both root level and nested in data)
-    if (results.ip_details || results.risk_assessment || results.technical_details || 
-        results.data?.ip_details || results.data?.risk_assessment || results.data?.technical_details) {
-      
+    if (results.ip_details || results.risk_assessment || results.technical_details ||
+      results.data?.ip_details || results.data?.risk_assessment || results.data?.technical_details) {
+
       // Use data from root level or nested under data
       const ipDetails = results.ip_details || results.data?.ip_details;
       const riskAssessment = results.risk_assessment || results.data?.risk_assessment;
       const technicalDetails = results.technical_details || results.data?.technical_details;
       const recommendations = results.recommendations || results.data?.recommendations;
       const virustotalData = results.data?.virustotal;
-      
+
       // Debug logging
       console.log("IP Results Debug:", {
         ipDetails,
@@ -812,7 +1219,7 @@ export default function Home() {
         virustotalData,
         fullResults: results
       });
-      
+
       return (
         <div className="space-y-3">
           {/* IP Details */}
@@ -866,7 +1273,7 @@ export default function Home() {
           {virustotalData && (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
-              
+
               {/* VirusTotal Summary */}
               {results.data?.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
                 <div className="bg-blue-50 p-3 rounded-lg">
@@ -882,23 +1289,21 @@ export default function Home() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium">Risk Score:</span>
-                      <span className={`text-lg font-bold ${
-                        virustotalData.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
+                      <span className={`text-lg font-bold ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
                         virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
-                        virustotalData.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
-                      }`}>
+                          virustotalData.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
+                        }`}>
                         {virustotalData.risk_assessment.risk_score}/100
                       </span>
                     </div>
-                    
+
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${
-                          virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
+                      <div
+                        className={`h-2 rounded-full ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
                           virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
-                          virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
-                        }`}
+                            virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
                         style={{ width: `${virustotalData.risk_assessment.risk_score}%` }}
                       ></div>
                     </div>
@@ -906,12 +1311,11 @@ export default function Home() {
 
                   {/* Risk Level Badge */}
                   <div>
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                      virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
                       virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
-                      virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
+                        virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                      }`}>
                       Risk Level: {virustotalData.risk_assessment.risk_level}
                     </span>
                   </div>
@@ -994,9 +1398,9 @@ export default function Home() {
                     {Object.entries(virustotalData.data.attributes.results).slice(0, 8).map(([engine, result]) => (
                       <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
                         <span>{engine}</span>
-                        <span className={`${(result as any).category === 'malicious' ? 'text-red-500' : 
-                                           (result as any).category === 'suspicious' ? 'text-yellow-500' : 
-                                           'text-green-500'}`}>
+                        <span className={`${(result as any).category === 'malicious' ? 'text-red-500' :
+                          (result as any).category === 'suspicious' ? 'text-yellow-500' :
+                            'text-green-500'}`}>
                           {(result as any).category}
                         </span>
                       </div>
@@ -1031,11 +1435,10 @@ export default function Home() {
               <div className="space-y-1 ml-4">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Risk Level:</span>
-                  <span className={`text-sm font-medium ${
-                    riskAssessment.risk_level === 'High' ? 'text-red-500' :
+                  <span className={`text-sm font-medium ${riskAssessment.risk_level === 'High' ? 'text-red-500' :
                     riskAssessment.risk_level === 'Medium' ? 'text-yellow-500' :
-                    'text-green-500'
-                  }`}>
+                      'text-green-500'
+                    }`}>
                     {riskAssessment.risk_level}
                   </span>
                 </div>
@@ -1112,7 +1515,7 @@ export default function Home() {
       const ports = results.ports || results.data?.ports;
       const hostInfo = results.host_info || results.data?.host_info;
       if (!ports) return <></>;
-      
+
       return (
         <div className="space-y-3">
           {hostInfo && (
@@ -1130,7 +1533,7 @@ export default function Home() {
               </div>
             </div>
           )}
-          
+
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Open Ports ({ports.length}):</div>
             <div className="space-y-2">
@@ -1138,9 +1541,8 @@ export default function Home() {
                 <div key={index} className="border border-border/20 rounded p-2 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-mono font-medium">Port {port.port}/{port.protocol}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      port.state === 'open' ? 'bg-green-500/20 text-green-600' : 'bg-gray-500/20 text-gray-600'
-                    }`}>
+                    <span className={`text-xs px-2 py-1 rounded ${port.state === 'open' ? 'bg-green-500/20 text-green-600' : 'bg-gray-500/20 text-gray-600'
+                      }`}>
                       {port.state}
                     </span>
                   </div>
@@ -1165,7 +1567,7 @@ export default function Home() {
     if (results.vulnerabilities || results.data?.vulnerabilities) {
       const vulnerabilities = results.vulnerabilities || results.data?.vulnerabilities;
       if (!vulnerabilities) return <></>;
-      
+
       return (
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">Vulnerabilities Found ({vulnerabilities.length}):</div>
@@ -1174,11 +1576,10 @@ export default function Home() {
               <div key={index} className="border border-border/20 rounded p-2 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{vuln.service}</span>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    vuln.severity === 'High' ? 'bg-red-500/20 text-red-600' :
+                  <span className={`text-xs px-2 py-1 rounded ${vuln.severity === 'High' ? 'bg-red-500/20 text-red-600' :
                     vuln.severity === 'Medium' ? 'bg-yellow-500/20 text-yellow-600' :
-                    'bg-green-500/20 text-green-600'
-                  }`}>
+                      'bg-green-500/20 text-green-600'
+                    }`}>
                     {vuln.severity}
                   </span>
                 </div>
@@ -1203,47 +1604,13 @@ export default function Home() {
       );
     }
 
-    // Handle SSL Analysis results
-    if (results.ssl_analysis || results.data?.ssl_analysis) {
-      const sslAnalysis = results.ssl_analysis || results.data?.ssl_analysis;
-      return (
-        <div className="space-y-3">
-          <div className="text-sm text-muted-foreground">SSL/TLS Analysis:</div>
-          <div className="space-y-2 ml-4">
-            {sslAnalysis.basic_info && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Basic Information:</div>
-                <div className="space-y-1 ml-4">
-                  {Object.entries(sslAnalysis.basic_info).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{key}:</span>
-                      <span className="text-xs">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sslAnalysis.cipher_info && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Cipher Information:</div>
-                <div className="space-y-1 ml-4">
-                  {Object.entries(sslAnalysis.cipher_info).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{key}:</span>
-                      <span className="text-xs">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
 
     // Handle Security Headers results
     if (results.headers || results.data?.headers) {
-      const headers = results.headers || results.data?.headers;
+      const headers = (results.headers || results.data?.headers || {}) as Record<
+        string,
+        { present?: boolean; value?: string }
+      >;
       const securityScore = results.security_score || results.data?.security_score;
       const grade = results.grade || results.data?.grade;
       return (
@@ -1257,25 +1624,28 @@ export default function Home() {
               </span>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Security Headers:</div>
             <div className="space-y-2">
-              {Object.entries(headers).map(([headerName, headerInfo]) => (
-                <div key={headerName} className="border border-border/20 rounded p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{headerName}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      headerInfo.present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                    }`}>
-                      {headerInfo.present ? 'Present' : 'Missing'}
-                    </span>
+              {Object.entries(headers).map(([headerName, headerInfo]) => {
+                const present = !!headerInfo?.present;
+                const value = headerInfo?.value;
+                return (
+                  <div key={headerName} className="border border-border/20 rounded p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{headerName}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
+                        }`}>
+                        {present ? 'Present' : 'Missing'}
+                      </span>
+                    </div>
+                    {value && (
+                      <div className="text-xs text-muted-foreground mt-1">{value}</div>
+                    )}
                   </div>
-                  {headerInfo.value && (
-                    <div className="text-xs text-muted-foreground mt-1">{headerInfo.value}</div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1290,31 +1660,35 @@ export default function Home() {
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Email Security Score:</div>
             <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold">{emailSecurity.grade}</span>
+              <span className="text-lg font-bold">{emailSecurity?.grade ?? "N/A"}</span>
               <span className="text-sm text-muted-foreground">
-                ({emailSecurity.total_score}/{emailSecurity.max_score})
+                ({emailSecurity?.total_score ?? "–"}/{emailSecurity?.max_score ?? "–"})
               </span>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Security Features:</div>
             <div className="space-y-2">
-              {Object.entries(emailSecurity).filter(([key]) => key in ['spf', 'dmarc', 'dkim']).map(([feature, info]) => (
-                <div key={feature} className="border border-border/20 rounded p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{feature.upper()}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      info.present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                    }`}>
-                      {info.present ? 'Present' : 'Missing'}
-                    </span>
+              {["spf", "dmarc", "dkim"].map((feature) => {
+                const info = (emailSecurity as Record<string, any>)[feature];
+                if (!info) return null;
+                const present = !!info.present;
+                return (
+                  <div key={feature} className="border border-border/20 rounded p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{feature.toUpperCase()}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
+                        }`}>
+                        {present ? 'Present' : 'Missing'}
+                      </span>
+                    </div>
+                    {present && info.record && (
+                      <div className="text-xs text-muted-foreground mt-1 font-mono">{info.record}</div>
+                    )}
                   </div>
-                  {info.present && info.record && (
-                    <div className="text-xs text-muted-foreground mt-1 font-mono">{info.record}</div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1414,7 +1788,7 @@ export default function Home() {
                 {results.domain_info.security_features.waf_detected && (
                   <div>WAF: {results.domain_info.security_features.waf_detected}</div>
                 )}
-                
+
                 {/* robots.txt with clickable link */}
                 <div className="flex items-center gap-2">
                   <span>robots.txt: {results.domain_info.security_features.robots_txt?.present ? "Present" : "Not Found"}</span>
@@ -1431,7 +1805,7 @@ export default function Home() {
                     </Button>
                   )}
                 </div>
-                
+
                 {/* security.txt with clickable link */}
                 <div className="flex items-center gap-2">
                   <span>security.txt: {results.domain_info.security_features.security_txt?.present ? "Present" : "Not Found"}</span>
@@ -1564,15 +1938,15 @@ export default function Home() {
             </div>
           )}
 
-                    {/* Recommendations */}
+          {/* Recommendations */}
           {results.data.recommendations && results.data.recommendations.length > 0 && (
             <div className="space-y-2">
               <span className="text-sm font-medium text-green-600">Recommendations:</span>
               <div className="text-sm pl-4 space-y-1">
-                    {results.data.recommendations.map((rec, index) => (
+                {results.data.recommendations.map((rec, index) => (
                   <div key={index}>• {rec}</div>
-                    ))}
-                </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1599,9 +1973,9 @@ export default function Home() {
                 {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
                   <div key={engine} className="flex justify-between text-sm bg-muted/20 p-1 rounded">
                     <span>{engine}</span>
-                    <span className={`${result.category === 'malicious' ? 'text-red-500' : 
-                                       result.category === 'suspicious' ? 'text-yellow-500' : 
-                                       'text-green-500'}`}>
+                    <span className={`${result.category === 'malicious' ? 'text-red-500' :
+                      result.category === 'suspicious' ? 'text-yellow-500' :
+                        'text-green-500'}`}>
                       {result.category}
                     </span>
                   </div>
@@ -1614,7 +1988,7 @@ export default function Home() {
           {(results.data?.additional_checks || results.data?.threat_analysis || results.data?.url_analysis) && (
             <div className="space-y-2">
               <span className="text-sm font-medium">Technical Details:</span>
-              
+
               {/* URL Analysis */}
               {results.data.url_analysis && (
                 <div className="space-y-1">
@@ -1754,17 +2128,32 @@ export default function Home() {
     e.preventDefault();
     setPortLoading(true);
     setPortResults(null);
+    setIsCached(false);
+
+    const storedPorts: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_ports") || "[]");
+    const cached = storedPorts.find((scan) => scan.input === portTarget);
+    if (cached) {
+      setPortResults(cached.result);
+      setIsCached(true);
+      setPortLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/scan-ports", {
+      const response = await fetch(`${API_URL}/api/scan-ports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: portTarget }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setPortResults(data);
+        upsertStoredScan("cyberregis_ports", {
+          input: portTarget,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setPortResults({
           status: "error",
@@ -1785,17 +2174,32 @@ export default function Home() {
     e.preventDefault();
     setVulnLoading(true);
     setVulnResults(null);
+    setIsCached(false);
+
+    const storedVulns: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_vuln") || "[]");
+    const cached = storedVulns.find((scan) => scan.input === vulnTarget);
+    if (cached) {
+      setVulnResults(cached.result);
+      setIsCached(true);
+      setVulnLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/vulnerability-scan", {
+      const response = await fetch(`${API_URL}/api/vulnerability-scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: vulnTarget }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setVulnResults(data);
+        upsertStoredScan("cyberregis_vuln", {
+          input: vulnTarget,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setVulnResults({
           status: "error",
@@ -1812,53 +2216,38 @@ export default function Home() {
     }
   };
 
-  const analyzeSSL = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSslLoading(true);
-    setSslResults(null);
-
-    try {
-      const response = await fetch("http://localhost:4000/api/ssl-analysis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: sslDomain }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setSslResults(data);
-      } else {
-        setSslResults({
-          status: "error",
-          message: `SSL analysis failed: ${response.statusText}`,
-        });
-      }
-    } catch (error) {
-      setSslResults({
-        status: "error",
-        message: `SSL analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    } finally {
-      setSslLoading(false);
-    }
-  };
 
   // Security Scanner Functions
   const scanSecurityHeaders = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setHeaderLoading(true);
     setHeaderResults(null);
+    setIsCached(false);
+
+    const storedHeaders: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_headers") || "[]");
+    const cached = storedHeaders.find((scan) => scan.input === headerUrl);
+    if (cached) {
+      setHeaderResults(cached.result);
+      setIsCached(true);
+      setHeaderLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/security-headers", {
+      const response = await fetch(`${API_URL}/api/security-headers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: headerUrl }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setHeaderResults(data);
+        upsertStoredScan("cyberregis_headers", {
+          input: headerUrl,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setHeaderResults({
           status: "error",
@@ -1879,17 +2268,32 @@ export default function Home() {
     e.preventDefault();
     setEmailLoading(true);
     setEmailResults(null);
+    setIsCached(false);
+
+    const storedEmails: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_email") || "[]");
+    const cached = storedEmails.find((scan) => scan.input === emailDomain);
+    if (cached) {
+      setEmailResults(cached.result);
+      setIsCached(true);
+      setEmailLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/email-security", {
+      const response = await fetch(`${API_URL}/api/email-security`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domain: emailDomain }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setEmailResults(data);
+        upsertStoredScan("cyberregis_email", {
+          input: emailDomain,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setEmailResults({
           status: "error",
@@ -1928,12 +2332,12 @@ export default function Home() {
     try {
       // Run both scans in parallel
       const [urlResponse, domainResponse] = await Promise.all([
-        fetch("http://localhost:4000/api/check-url", {
+        fetch(`${API_URL}/api/check-url`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: integratedInput }),
         }),
-        fetch("http://localhost:4000/api/analyze-domain", {
+        fetch(`${API_URL}/api/analyze-domain`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ domain }),
@@ -1948,13 +2352,11 @@ export default function Home() {
         domainResults: domainData,
       });
 
-      // Store in localStorage
-      storedIntegrated.push({
+      upsertStoredScan("cyberregis_integrated", {
         input: integratedInput,
         result: { urlResults: urlData, domainResults: domainData } as any,
         timestamp: new Date().toISOString(),
       });
-      localStorage.setItem("cyberregis_integrated", JSON.stringify(storedIntegrated));
 
     } catch (error) {
       setIntegratedResults({
@@ -1982,7 +2384,7 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:4000/api/chat", {
+      const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: chatInput }),
@@ -2097,7 +2499,7 @@ export default function Home() {
 
         <Card className="border-primary/20 bg-card/50 backdrop-blur-sm mb-8">
           <Tabs defaultValue="integrated" className="p-6">
-            <TabsList className="grid w-full grid-cols-5 lg:w-[600px] mb-6">
+            <TabsList className="grid w-full grid-cols-6 lg:w-[720px] mb-6">
               <TabsTrigger value="integrated" className="data-[state=active]:bg-primary/20 text-xs">
                 <Eye className="w-3 h-3 mr-1" />
                 Domain Recon
@@ -2113,6 +2515,10 @@ export default function Home() {
               <TabsTrigger value="advanced" className="data-[state=active]:bg-primary/20 text-xs">
                 <Shield className="w-3 h-3 mr-1" />
                 Advanced
+              </TabsTrigger>
+              <TabsTrigger value="monitoring" className="data-[state=active]:bg-primary/20 text-xs">
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Monitoring
               </TabsTrigger>
               <TabsTrigger value="security" className="data-[state=active]:bg-primary/20 text-xs">
                 <Activity className="w-3 h-3 mr-1" />
@@ -2304,8 +2710,8 @@ export default function Home() {
                         <div className="bg-card/50 border border-border/20 rounded-lg p-4">
                           <h4 className="font-medium text-sm text-muted-foreground mb-2">Overall Risk Level</h4>
                           <div className="text-2xl font-bold text-center">
-                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious || 
-                             integratedResults.domainResults?.status === "error" ? (
+                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ||
+                              integratedResults.domainResults?.status === "error" ? (
                               <span className="text-red-500">HIGH</span>
                             ) : (
                               <span className="text-green-500">LOW</span>
@@ -2400,9 +2806,9 @@ export default function Home() {
                             <div className="flex items-center justify-between">
                               <span className="text-sm">Security Score:</span>
                               <Badge variant="outline" className="text-xs">
-                                {integratedResults.urlResults?.data?.virustotal?.risk_assessment ? 
+                                {integratedResults.urlResults?.data?.virustotal?.risk_assessment ?
                                   `${integratedResults.urlResults.data.virustotal.risk_assessment.malicious_count || 0} / ${integratedResults.urlResults.data.virustotal.risk_assessment.total_engines || 0}` :
-                                  integratedResults.urlResults?.data?.virustotal?.data?.attributes?.stats ? 
+                                  integratedResults.urlResults?.data?.virustotal?.data?.attributes?.stats ?
                                     `${integratedResults.urlResults.data.virustotal.data.attributes.stats.malicious || 0} / ${integratedResults.urlResults.data.virustotal.data.attributes.stats.total || 0}` :
                                     '0 / 0'
                                 }
@@ -2444,7 +2850,7 @@ export default function Home() {
                     {loading ? "Scanning..." : "Scan IP"}
                   </Button>
                 </div>
-                
+
                 {/* Enhanced Loading State for IP Scanner */}
                 {loading && (
                   <div className="text-center py-4">
@@ -2454,22 +2860,21 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                
+
                 {ipResults && (
                   <Alert
-                    className={`bg-${
-                      ipResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${ipResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${ipResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${ipResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
-                      {isCached && (
+                            {isCached && (
                               <p className="text-sm text-muted-foreground">
-                          Showing cached results from {new Date(ipResults.timestamp || "").toLocaleString()}
-                        </p>
-                      )}
+                                Showing cached results from {new Date(ipResults.timestamp || "").toLocaleString()}
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className="text-sm text-muted-foreground">View:</span>
@@ -2557,7 +2962,7 @@ export default function Home() {
                     {loading ? "Analyzing..." : "Analyze Network Log"}
                   </Button>
                 </div>
-                
+
                 {/* Enhanced Loading State */}
                 {loading && (
                   <div className="text-center py-6">
@@ -2572,12 +2977,11 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                
+
                 {logResults && (
                   <Alert
-                    className={`bg-${
-                      logResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${logResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${logResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${logResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2589,9 +2993,8 @@ export default function Home() {
                               </p>
                             )}
                             <p
-                              className={`text-${
-                                logResults.status === "error" ? "destructive" : "primary"
-                              }`}
+                              className={`text-${logResults.status === "error" ? "destructive" : "primary"
+                                }`}
                             >
                               {logResults.message || `Analysis completed for ${selectedFile?.name}`}
                             </p>
@@ -2630,11 +3033,11 @@ export default function Home() {
               <div className="space-y-2">
                 <h2 className="text-2xl font-semibold">Advanced Security Scanners</h2>
                 <p className="text-sm text-muted-foreground">
-                  Port scanning, vulnerability assessment, and SSL/TLS analysis
+                  Port scanning and vulnerability assessment
                 </p>
               </div>
               <Separator />
-              
+
               {/* Port Scanner Section */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Port Scanner</h3>
@@ -2658,9 +3061,8 @@ export default function Home() {
                 </form>
                 {portResults && (
                   <Alert
-                    className={`bg-${
-                      portResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${portResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${portResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${portResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2724,9 +3126,8 @@ export default function Home() {
                 </form>
                 {vulnResults && (
                   <Alert
-                    className={`bg-${
-                      vulnResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${vulnResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${vulnResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${vulnResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2765,70 +3166,740 @@ export default function Home() {
                 )}
               </div>
 
-              <Separator />
+            </TabsContent>
 
-              {/* SSL/TLS Analyzer Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">SSL/TLS Deep Analysis</h3>
-                <form onSubmit={analyzeSSL} className="space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="text"
-                      placeholder="Enter domain for SSL analysis"
-                      value={sslDomain}
-                      onChange={(e) => setSslDomain(e.target.value)}
-                      className="bg-background/50"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={sslLoading}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      {sslLoading ? "Analyzing..." : "Analyze SSL"}
-                    </Button>
+            <TabsContent value="monitoring" className="space-y-6">
+              <div className="space-y-2">
+                <h2 className="text-2xl font-semibold">Cache Monitoring</h2>
+                <p className="text-sm text-muted-foreground">
+                  Review cached results and configure automatic refresh intervals so key artefacts stay up to date without rerunning scans manually.
+                </p>
+              </div>
+              <Separator />
+              <div className="space-y-6">
+                {/* Domain Recon */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Domain Recon Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedIntegrated.length} cached {cachedIntegrated.length === 1 ? "entry" : "entries"}
+                    </Badge>
                   </div>
-                </form>
-                {sslResults && (
-                  <Alert
-                    className={`bg-${
-                      sslResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${sslResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(sslResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
+                  {cachedIntegrated.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run a domain or URL scan to populate this cache. Saved entries will appear here for monitoring.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cachedIntegrated.map((entry) => {
+                        const schedule = getScheduleFor(entry.input, "domain", scheduledScans);
+                        const threatStatus =
+                          entry.result?.urlResults?.data?.threat_analysis?.is_malicious ?? null;
+                        const threatsFound =
+                          entry.result?.urlResults?.data?.threat_analysis?.threats_found ?? null;
+                        return (
+                          <div
+                            key={`domain-${entry.input}`}
+                            className="border border-border/40 rounded-lg bg-background/40 p-4 space-y-4"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-semibold">{entry.input}</span>
+                                  {schedule ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Every {schedule.intervalMinutes} min
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Not scheduled
+                                    </Badge>
+                                  )}
+                                  {threatStatus !== null && (
+                                    <Badge
+                                      variant={threatStatus ? "destructive" : "outline"}
+                                      className={`text-xs ${threatStatus ? "" : "text-green-600 border-green-600"
+                                        }`}
+                                    >
+                                      {threatStatus ? "Malicious" : "Clean"}
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "running" && (
+                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                      Refreshing…
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "error" && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Cached: {formatTimestamp(entry.timestamp)}
+                                </p>
+                                {schedule && (
+                                  <div className="space-y-1 text-xs text-muted-foreground">
+                                    <div>Last refresh: {formatTimestamp(schedule.lastChecked)}</div>
+                                    <div>Next refresh: {formatTimestamp(schedule.nextCheck)}</div>
+                                    {schedule.status === "error" && schedule.errorMessage && (
+                                      <div className="text-destructive">
+                                        Last error: {schedule.errorMessage}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {(threatStatus !== null || threatsFound !== null) && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {threatsFound !== null && (
+                                      <span>Threats detected: {threatsFound}. </span>
+                                    )}
+                                    {entry.result?.domainResults?.data?.additional_checks?.domain_analysis?.risk_level && (
+                                      <span>
+                                        Risk level:{" "}
+                                        {entry.result.domainResults.data.additional_checks.domain_analysis.risk_level}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+                                <div className="space-y-1">
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Auto-refresh interval
+                                  </span>
+                                  <Select
+                                    value={schedule ? String(schedule.intervalMinutes) : "off"}
+                                    onValueChange={(value) => handleScheduleChange(entry.input, "domain", value)}
+                                  >
+                                    <SelectTrigger className="bg-background/50 w-44">
+                                      <SelectValue placeholder="Choose interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {intervalOptions.map((option) => (
+                                        <SelectItem key={`domain-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {schedule && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-44"
+                                    onClick={() => handleManualRefresh(schedule)}
+                                    disabled={schedule.status === "running"}
+                                  >
+                                    {schedule.status === "running" ? "Refreshing..." : "Refresh now"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={sslViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setSslViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={sslViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setSslViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* IP */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">IP Scan Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedIps.length} cached {cachedIps.length === 1 ? "entry" : "entries"}
+                    </Badge>
+                  </div>
+                  {cachedIps.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run an IP scan to populate the cache. Entries will appear here for monitoring once results are saved locally.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cachedIps.map((entry) => {
+                        const schedule = getScheduleFor(entry.input, "ip", scheduledScans);
+                        const risk =
+                          entry.result?.data?.threat_analysis?.is_malicious ??
+                          entry.result?.threat_analysis?.is_malicious;
+                        return (
+                          <div
+                            key={`ip-${entry.input}`}
+                            className="border border-border/40 rounded-lg bg-background/40 p-4 space-y-4"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-semibold font-mono">{entry.input}</span>
+                                  {schedule ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Every {schedule.intervalMinutes} min
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Not scheduled
+                                    </Badge>
+                                  )}
+                                  {typeof risk === "boolean" && (
+                                    <Badge
+                                      variant={risk ? "destructive" : "outline"}
+                                      className={`text-xs ${risk ? "" : "text-green-600 border-green-600"}`}
+                                    >
+                                      {risk ? "Malicious" : "Clean"}
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "running" && (
+                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                      Refreshing…
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "error" && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Cached: {formatTimestamp(entry.timestamp)}
+                                </p>
+                                {schedule && (
+                                  <div className="space-y-1 text-xs text-muted-foreground">
+                                    <div>Last refresh: {formatTimestamp(schedule.lastChecked)}</div>
+                                    <div>Next refresh: {formatTimestamp(schedule.nextCheck)}</div>
+                                    {schedule.status === "error" && schedule.errorMessage && (
+                                      <div className="text-destructive">
+                                        Last error: {schedule.errorMessage}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {entry.result?.data?.risk_assessment?.risk_level && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Risk level: {entry.result.data.risk_assessment.risk_level}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+                                <div className="space-y-1">
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Auto-refresh interval
+                                  </span>
+                                  <Select
+                                    value={schedule ? String(schedule.intervalMinutes) : "off"}
+                                    onValueChange={(value) => handleScheduleChange(entry.input, "ip", value)}
+                                  >
+                                    <SelectTrigger className="bg-background/50 w-44">
+                                      <SelectValue placeholder="Choose interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {intervalOptions.map((option) => (
+                                        <SelectItem key={`ip-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {schedule && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-44"
+                                    onClick={() => handleManualRefresh(schedule)}
+                                    disabled={schedule.status === "running"}
+                                  >
+                                    {schedule.status === "running" ? "Refreshing..." : "Refresh now"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Network Logs */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Network Log Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedLogs.length} cached {cachedLogs.length === 1 ? "entry" : "entries"}
+                    </Badge>
+                  </div>
+                  {cachedLogs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Upload a PCAP file to populate the cache. Cached log analyses are view-only and must be re-run manually if the underlying file changes.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {cachedLogs.map((entry) => (
+                        <div
+                          key={`log-${entry.input}-${entry.timestamp}`}
+                          className="border border-border/40 rounded-lg bg-background/40 p-4"
+                        >
+                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold">{entry.input}</span>
+                                <Badge variant="outline" className="text-xs text-muted-foreground">
+                                  Manual refresh only
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Cached: {formatTimestamp(entry.timestamp)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Auto-refresh is not available for file uploads because the original artefact is required to re-run the analysis.
+                              </p>
+                            </div>
+                            <div className="text-xs text-muted-foreground md:text-right">
+                              {entry.result?.data?.summary && (
+                                <div>Summary: {entry.result.data.summary}</div>
+                              )}
+                              {entry.result?.status && entry.result?.message && (
+                                <div>{entry.result.status}: {entry.result.message}</div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        {formatResults(sslResults, sslViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Port Scans */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Port Scan Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedPorts.length} cached {cachedPorts.length === 1 ? "entry" : "entries"}
+                    </Badge>
+                  </div>
+                  {cachedPorts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run a port scan to populate this cache. Saved entries can be refreshed automatically to catch exposed services.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cachedPorts.map((entry) => {
+                        const schedule = getScheduleFor(entry.input, "port", scheduledScans);
+                        const portCount =
+                          entry.result?.ports?.length ??
+                          entry.result?.data?.ports?.length ??
+                          entry.result?.open_ports?.length ??
+                          0;
+                        return (
+                          <div
+                            key={`port-${entry.input}`}
+                            className="border border-border/40 rounded-lg bg-background/40 p-4 space-y-4"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-semibold font-mono">{entry.input}</span>
+                                  {schedule ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Every {schedule.intervalMinutes} min
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Not scheduled
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "running" && (
+                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                      Refreshing…
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "error" && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Cached: {formatTimestamp(entry.timestamp)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Detected open services: {portCount}
+                                </p>
+                                {schedule && (
+                                  <div className="space-y-1 text-xs text-muted-foreground">
+                                    <div>Last refresh: {formatTimestamp(schedule.lastChecked)}</div>
+                                    <div>Next refresh: {formatTimestamp(schedule.nextCheck)}</div>
+                                    {schedule.status === "error" && schedule.errorMessage && (
+                                      <div className="text-destructive">
+                                        Last error: {schedule.errorMessage}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+                                <div className="space-y-1">
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Auto-refresh interval
+                                  </span>
+                                  <Select
+                                    value={schedule ? String(schedule.intervalMinutes) : "off"}
+                                    onValueChange={(value) => handleScheduleChange(entry.input, "port", value)}
+                                  >
+                                    <SelectTrigger className="bg-background/50 w-44">
+                                      <SelectValue placeholder="Choose interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {intervalOptions.map((option) => (
+                                        <SelectItem key={`port-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {schedule && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-44"
+                                    onClick={() => handleManualRefresh(schedule)}
+                                    disabled={schedule.status === "running"}
+                                  >
+                                    {schedule.status === "running" ? "Refreshing..." : "Refresh now"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Vulnerability Scans */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Vulnerability Scan Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedVulns.length} cached {cachedVulns.length === 1 ? "entry" : "entries"}
+                    </Badge>
+                  </div>
+                  {cachedVulns.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run a vulnerability scan to populate this cache. Saved entries can be scheduled to monitor exposed services for new CVEs.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cachedVulns.map((entry) => {
+                        const schedule = getScheduleFor(entry.input, "vuln", scheduledScans);
+                        const vulnCount =
+                          entry.result?.vulnerabilities?.length ??
+                          entry.result?.data?.vulnerabilities?.length ??
+                          0;
+                        return (
+                          <div
+                            key={`vuln-${entry.input}`}
+                            className="border border-border/40 rounded-lg bg-background/40 p-4 space-y-4"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-semibold font-mono">{entry.input}</span>
+                                  {schedule ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Every {schedule.intervalMinutes} min
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Not scheduled
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "running" && (
+                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                      Refreshing…
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "error" && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Cached: {formatTimestamp(entry.timestamp)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Vulnerabilities found: {vulnCount}
+                                </p>
+                                {schedule && (
+                                  <div className="space-y-1 text-xs text-muted-foreground">
+                                    <div>Last refresh: {formatTimestamp(schedule.lastChecked)}</div>
+                                    <div>Next refresh: {formatTimestamp(schedule.nextCheck)}</div>
+                                    {schedule.status === "error" && schedule.errorMessage && (
+                                      <div className="text-destructive">
+                                        Last error: {schedule.errorMessage}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+                                <div className="space-y-1">
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Auto-refresh interval
+                                  </span>
+                                  <Select
+                                    value={schedule ? String(schedule.intervalMinutes) : "off"}
+                                    onValueChange={(value) => handleScheduleChange(entry.input, "vuln", value)}
+                                  >
+                                    <SelectTrigger className="bg-background/50 w-44">
+                                      <SelectValue placeholder="Choose interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {intervalOptions.map((option) => (
+                                        <SelectItem key={`vuln-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {schedule && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-44"
+                                    onClick={() => handleManualRefresh(schedule)}
+                                    disabled={schedule.status === "running"}
+                                  >
+                                    {schedule.status === "running" ? "Refreshing..." : "Refresh now"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Security Headers */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Security Headers Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedHeaders.length} cached {cachedHeaders.length === 1 ? "entry" : "entries"}
+                    </Badge>
+                  </div>
+                  {cachedHeaders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run a security headers scan to populate this cache. Saved URLs can be checked periodically for regressions.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cachedHeaders.map((entry) => {
+                        const schedule = getScheduleFor(entry.input, "headers", scheduledScans);
+                        const grade = entry.result?.grade ?? entry.result?.data?.grade ?? null;
+                        return (
+                          <div
+                            key={`headers-${entry.input}`}
+                            className="border border-border/40 rounded-lg bg-background/40 p-4 space-y-4"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-semibold">{entry.input}</span>
+                                  {schedule ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Every {schedule.intervalMinutes} min
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Not scheduled
+                                    </Badge>
+                                  )}
+                                  {grade && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Grade: {grade}
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "running" && (
+                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                      Refreshing…
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "error" && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Cached: {formatTimestamp(entry.timestamp)}
+                                </p>
+                                {schedule && (
+                                  <div className="space-y-1 text-xs text-muted-foreground">
+                                    <div>Last refresh: {formatTimestamp(schedule.lastChecked)}</div>
+                                    <div>Next refresh: {formatTimestamp(schedule.nextCheck)}</div>
+                                    {schedule.status === "error" && schedule.errorMessage && (
+                                      <div className="text-destructive">
+                                        Last error: {schedule.errorMessage}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+                                <div className="space-y-1">
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Auto-refresh interval
+                                  </span>
+                                  <Select
+                                    value={schedule ? String(schedule.intervalMinutes) : "off"}
+                                    onValueChange={(value) => handleScheduleChange(entry.input, "headers", value)}
+                                  >
+                                    <SelectTrigger className="bg-background/50 w-44">
+                                      <SelectValue placeholder="Choose interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {intervalOptions.map((option) => (
+                                        <SelectItem key={`headers-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {schedule && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-44"
+                                    onClick={() => handleManualRefresh(schedule)}
+                                    disabled={schedule.status === "running"}
+                                  >
+                                    {schedule.status === "running" ? "Refreshing..." : "Refresh now"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Security */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Email Security Cache</h3>
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      {cachedEmails.length} cached {cachedEmails.length === 1 ? "entry" : "entries"}
+                    </Badge>
+                  </div>
+                  {cachedEmails.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Run an email security analysis to populate this cache. Cached domains can be monitored for SPF/DMARC/DKIM changes.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {cachedEmails.map((entry) => {
+                        const schedule = getScheduleFor(entry.input, "email", scheduledScans);
+                        const grade = entry.result?.grade ?? entry.result?.data?.grade ?? null;
+                        return (
+                          <div
+                            key={`email-${entry.input}`}
+                            className="border border-border/40 rounded-lg bg-background/40 p-4 space-y-4"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-base font-semibold">{entry.input}</span>
+                                  {schedule ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Every {schedule.intervalMinutes} min
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                                      Not scheduled
+                                    </Badge>
+                                  )}
+                                  {grade && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Grade: {grade}
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "running" && (
+                                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                                      Refreshing…
+                                    </Badge>
+                                  )}
+                                  {schedule?.status === "error" && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Cached: {formatTimestamp(entry.timestamp)}
+                                </p>
+                                {schedule && (
+                                  <div className="space-y-1 text-xs text-muted-foreground">
+                                    <div>Last refresh: {formatTimestamp(schedule.lastChecked)}</div>
+                                    <div>Next refresh: {formatTimestamp(schedule.nextCheck)}</div>
+                                    {schedule.status === "error" && schedule.errorMessage && (
+                                      <div className="text-destructive">
+                                        Last error: {schedule.errorMessage}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+                                <div className="space-y-1">
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    Auto-refresh interval
+                                  </span>
+                                  <Select
+                                    value={schedule ? String(schedule.intervalMinutes) : "off"}
+                                    onValueChange={(value) => handleScheduleChange(entry.input, "email", value)}
+                                  >
+                                    <SelectTrigger className="bg-background/50 w-44">
+                                      <SelectValue placeholder="Choose interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {intervalOptions.map((option) => (
+                                        <SelectItem key={`email-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {schedule && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-44"
+                                    onClick={() => handleManualRefresh(schedule)}
+                                    disabled={schedule.status === "running"}
+                                  >
+                                    {schedule.status === "running" ? "Refreshing..." : "Refresh now"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </TabsContent>
 
@@ -2840,7 +3911,7 @@ export default function Home() {
                 </p>
               </div>
               <Separator />
-              
+
               {/* Security Headers Scanner */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Security Headers Scanner</h3>
@@ -2864,9 +3935,8 @@ export default function Home() {
                 </form>
                 {headerResults && (
                   <Alert
-                    className={`bg-${
-                      headerResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${headerResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${headerResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${headerResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2930,9 +4000,8 @@ export default function Home() {
                 </form>
                 {emailResults && (
                   <Alert
-                    className={`bg-${
-                      emailResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${emailResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${emailResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${emailResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2998,11 +4067,10 @@ export default function Home() {
                     className={`mb-4 flex ${message.isUser ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[70%] rounded-lg p-3 ${
-                        message.isUser
-                          ? "bg-primary/20 text-primary-foreground"
-                          : "bg-secondary/50 text-foreground"
-                      }`}
+                      className={`max-w-[70%] rounded-lg p-3 ${message.isUser
+                        ? "bg-primary/20 text-primary-foreground"
+                        : "bg-secondary/50 text-foreground"
+                        }`}
                     >
                       {message.isUser ? (
                         <p className="text-sm">{message.text}</p>
@@ -3081,7 +4149,7 @@ export default function Home() {
                 </div>
               </DialogTitle>
             </DialogHeader>
-            
+
             {fileContent && (
               <div className="space-y-4">
                 {/* File Info */}
@@ -3103,9 +4171,9 @@ export default function Home() {
                     <p className="text-xs">{fileContent.last_modified}</p>
                   </div>
                 </div>
-                
+
                 <Separator />
-                
+
                 {/* File Content */}
                 <div>
                   <h4 className="font-medium mb-2">File Content:</h4>
