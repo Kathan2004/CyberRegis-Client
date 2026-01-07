@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 
 // Define interfaces for props
-interface Blog {
+type Blog = {
   id: string;
   title: string;
   excerpt: string;
@@ -19,18 +19,21 @@ interface Blog {
   category: string;
   readTime: string;
   source: string;
-}
+  imageUrl?: string;
+};
 
-interface Threat {
+type Threat = {
   id: string;
   title: string;
   summary: string;
   severity: string;
   date: string;
   source: string;
-}
+  imageUrl?: string;
+  link?: string;
+};
 
-interface Resource {
+type Resource = {
   id: number;
   title: string;
   description: string;
@@ -38,7 +41,8 @@ interface Resource {
   url: string;
   language?: string;
   topics?: string[];
-}
+  imageUrl?: string;
+};
 
 interface ClientResourcesProps {
   initialBlogs: Blog[];
