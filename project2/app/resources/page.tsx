@@ -203,12 +203,13 @@ async function fetchThreatNews(): Promise<Threat[]> {
 
   // AlienVault OTX API
   try {
+    // increase timeout to 30s for OTX which can be slow
     const response = await fetchWithRetry('https://otx.alienvault.com/api/v1/pulses/subscribed', {
       headers: {
         'X-OTX-API-KEY': OTX_API_KEY,
       },
       cache: 'no-store',
-    });
+    }, 3, 30000);
     const data = await response.json();
     if (data.results) {
       threats.push(...data.results.map((pulse: any) => {
@@ -303,6 +304,13 @@ export default async function ResourcesPage() {
         initialThreatNews={initialThreatNews}
         initialResources={initialResources}
         error={error}
+        features={{
+          search: true,
+          filters: true,
+          favorites: true,
+          infiniteScroll: true,
+        }}
+        revalidateInterval={300} // seconds: hint for client refresh behavior
       />
     </>
   );
