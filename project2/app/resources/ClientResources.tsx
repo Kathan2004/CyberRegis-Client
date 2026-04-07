@@ -246,7 +246,7 @@ export default function ClientResources({ initialBlogs, initialThreatNews, initi
       }}
     >
       <Header />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-12">
         {isLoading ? <p>Loading...</p> : blogs.length > 0 ? (
           <>
             {error && (

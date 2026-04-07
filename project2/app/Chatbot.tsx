@@ -38,7 +38,7 @@ interface ChatbotProps {
 }
 
 export default function Chatbot({
-  apiEndpoint = "http://localhost.com:4000/api/chat",
+  apiEndpoint = `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"}/api/chat`,
   className,
   initialMessages = [],
 }: ChatbotProps) {

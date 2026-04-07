@@ -1,13 +1,10 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "CyberRegis - Cybersecurity Hub",
-  description: "Check for email breaches, phishing URLs, Network(pcap) Analysis  and IP reputation",
+  title: "CyberRegis - Threat Intelligence Platform",
+  description: "Industry-grade threat intelligence, domain reconnaissance, IP analysis, vulnerability scanning, and security assessment.",
 };
 
 export default function RootLayout({
@@ -17,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className="font-sans">
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
