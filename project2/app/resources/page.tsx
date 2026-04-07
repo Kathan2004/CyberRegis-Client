@@ -1,8 +1,5 @@
-import dynamic from 'next/dynamic';
 import Parser from 'rss-parser';
-
-// Dynamically import ClientResources with SSR disabled
-const ClientResources = dynamic(() => import('./ClientResources'), { ssr: false });
+import ClientResources from './ClientResources';
 
 // Define interfaces for API data
 interface Blog {
@@ -52,22 +49,24 @@ function deduplicateByTitle<T extends { title: string }>(items: T[]): T[] {
 
 // Retry fetch with timeout and backoff
 async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 3, timeout = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
+	for (let i = 0; i < retries; i++) {
+		const controller = new AbortController();
+		const id = setTimeout(() => controller.abort(), timeout);
 
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(id);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response;
-    } catch (error) {
-      clearTimeout(id);
-      if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, 2 ** i * 1000)); // Exponential backoff
-    }
-  }
-  throw new Error('Max retries reached');
+		try {
+			const response = await fetch(url, { ...options, signal: controller.signal });
+			clearTimeout(id);
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			return response;
+		} catch (error) {
+			clearTimeout(id);
+			if (i === retries - 1) throw error;
+			// exponential backoff before next attempt
+			await new Promise(resolve => setTimeout(resolve, 2 ** i * 1000));
+			// next loop iteration will create a fresh controller and timeout
+		}
+	}
+	throw new Error('Max retries reached');
 }
 
 // Determine severity based on tags or content
@@ -204,12 +203,13 @@ async function fetchThreatNews(): Promise<Threat[]> {
 
   // AlienVault OTX API
   try {
+    // increase timeout to 30s for OTX which can be slow
     const response = await fetchWithRetry('https://otx.alienvault.com/api/v1/pulses/subscribed', {
       headers: {
         'X-OTX-API-KEY': OTX_API_KEY,
       },
       cache: 'no-store',
-    });
+    }, 3, 30000);
     const data = await response.json();
     if (data.results) {
       threats.push(...data.results.map((pulse: any) => {
@@ -298,11 +298,20 @@ export default async function ResourcesPage() {
       : undefined;
 
   return (
-    <ClientResources
-      initialBlogs={initialBlogs}
-      initialThreatNews={initialThreatNews}
-      initialResources={initialResources}
-      error={error}
-    />
+    <>
+      <ClientResources
+        initialBlogs={initialBlogs}
+        initialThreatNews={initialThreatNews}
+        initialResources={initialResources}
+        error={error}
+        features={{
+          search: true,
+          filters: true,
+          favorites: true,
+          infiniteScroll: true,
+        }}
+        revalidateInterval={300} // seconds: hint for client refresh behavior
+      />
+    </>
   );
 }

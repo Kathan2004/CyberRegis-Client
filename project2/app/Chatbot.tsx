@@ -170,13 +170,12 @@ export default function Chatbot({
                 className={`mb-4 flex ${message.isUser ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[70%] rounded-lg p-3 ${
-                    message.isUser
+                  className={`max-w-[70%] rounded-lg p-3 ${message.isUser
                       ? "bg-primary/20 text-primary-foreground"
                       : "bg-secondary/50 text-foreground"
-                  }`}
+                    }`}
                 >
-                  <p className="text-sm">{message.text}</p>
+                  <p className="text-sm text-white">{message.text}</p>
                   <span className="text-xs text-muted-foreground mt-1 block">
                     {message.timestamp}
                   </span>
@@ -191,7 +190,8 @@ export default function Chatbot({
             placeholder="Ask a question..."
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            className="bg-background/50"
+            className="bg-background border-input !text-white"
+            style={{ color: '#FFFFFF' }}
           />
           <Button
             type="submit"
