@@ -88,7 +88,7 @@ export default function MonitoringPage() {
   const [scheduledScans, setScheduledScans] = useState<ScheduledScan[]>([]);
   const scheduledScansRef = useRef<ScheduledScan[]>([]);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
   const reloadCaches = () => {
     setCachedIntegrated(loadStoredScans("cyberregis_integrated"));
@@ -425,38 +425,24 @@ export default function MonitoringPage() {
           "radial-gradient(circle at 50% 50%, hsl(var(--background)) 0%, hsl(var(--card)) 100%)",
       }}
     >
-      <header className="border-b border-border/40 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full"></div>
-                <Shield className="w-8 h-8 text-primary relative z-10" />
-              </div>
-              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/50">
-                CyberRegis
-              </span>
-            </div>
-            <nav className="flex items-center space-x-6">
-              <Link href="/" className="text-foreground hover:text-primary transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/resources" className="text-foreground hover:text-primary transition-colors">
-                Resources
-              </Link>
-              <Link href="/monitoring" className="text-primary transition-colors">
-                Monitoring
-              </Link>
-              <div className="flex items-center space-x-1">
-                <Activity className="w-4 h-4 text-green-500 animate-pulse" />
-                <span className="text-sm text-muted-foreground">Active</span>
-              </div>
-            </nav>
-          </div>
+      <header className="sticky top-0 z-50 border-b border-primary/20 bg-background/95 backdrop-blur-md">
+        <div className="flex h-16 w-full items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <Shield className="h-6 w-6 text-primary" />
+            <span className="text-lg font-bold bg-gradient-to-r from-primary to-primary/50 bg-clip-text text-transparent">CyberRegis</span>
+          </Link>
+          <nav className="flex items-center gap-6 text-sm">
+            <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">Dashboard</Link>
+            <Link href="/threat-intel" className="text-muted-foreground hover:text-primary transition-colors">Threat Intel</Link>
+            <Link href="/cve" className="text-muted-foreground hover:text-primary transition-colors">CVE Database</Link>
+            <Link href="/history" className="text-muted-foreground hover:text-primary transition-colors">Scan History</Link>
+            <Link href="/reports" className="text-muted-foreground hover:text-primary transition-colors">Reports</Link>
+            <Link href="/monitoring" className="text-primary font-semibold">Monitoring</Link>
+          </nav>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-8 space-y-8">
+      <div className="w-full p-8 space-y-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/50">

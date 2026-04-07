@@ -1,3022 +1,1254 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Shield, Globe, Network, Eye, Activity, FileText, BarChart4, Upload, FileUp, MessageSquare, ExternalLink, X } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Shield, Globe, Network, Eye, Activity, Upload, MessageSquare,
+  ExternalLink, X, Search, ChevronRight, ChevronLeft, AlertTriangle, CheckCircle,
+  Lock, Server, Mail, FileText, TrendingUp, Database, Clock, Zap,
+  BarChart3, Wifi, Bug, RefreshCw, Copy,
+} from "lucide-react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { loadStoredScans, StoredScan, upsertStoredScan } from "@/lib/cache";
+import * as api from "@/app/lib/api";
+import type { DashboardStats, ScanHistoryEntry } from "@/app/types";
+import { loadStoredScans, upsertStoredScan } from "@/lib/cache";
 
-// Define interface for API responses
-interface ScanResult {
-  data?: {
-    url_analysis?: {
-      input_url: string;
-      parsed_details?: {
-        domain: string;
-        scheme: string;
-        path: string;
-        fragment?: string;
-        query_params?: any;
-      };
-      security_check_time?: string;
-    };
-    threat_analysis?: {
-      is_malicious: boolean;
-      threats_found?: number;
-      threat_details?: any[];
-      google_safe_browsing?: {
-        status: string;
-        response_code: number;
-      };
-    };
-    additional_checks?: {
-      domain_analysis?: {
-        risk_level: string;
-        risk_score?: number;
-        risk_factors?: string[];
-        analysis?: {
-          length: number;
-          subdomains: number;
-          suspicious_tld: boolean;
-          special_chars: boolean;
-          number_substitution: boolean;
-        };
-        whois?: {
-          registrar: string;
-          creation_date: string;
-          expiration_date: string;
-          name_servers: string[];
-          status: string;
-        };
-      };
-      ssl_security?: {
-        valid: boolean;
-        status_code?: number;
-      };
-      suspicious_patterns?: {
-        risk_level: string;
-        found: boolean;
-        matches?: string[];
-      };
-    };
-    protocols?: { [protocol: string]: number };
-    metadata?: { [key: string]: string | number };
-    suspicious_ips?: string[];
-    potential_threats?: { type: string; severity: string; source?: string; domain?: string }[];
-    recommendations?: string[];
-    message?: string;
-    response?: string;
-    virustotal?: {
-      data?: {
-        attributes?: {
-          stats?: { [key: string]: number };
-          results?: { [engine: string]: { category: string; result: string } };
-        };
-      };
-      // Enhanced security analysis structure
-      risk_assessment?: {
-        risk_score: number;
-        risk_level: 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW' | 'UNKNOWN';
-        malicious_count: number;
-        suspicious_count: number;
-        detection_ratio: string;
-        total_engines: number;
-      };
-      metadata?: {
-        reputation?: number;
-        file_type?: string;
-        analysis_date?: number;
-      };
-      error?: string;
-    };
-    virustotal_summary?: string;
-    pcap_analysis?: { [protocol: string]: number };
-    chart_base64?: string;
-    // IP-specific fields that might be nested under data
-    ip_details?: {
-      address: string;
-      domain?: string;
-      hostname?: string[];
-      isp?: string;
-      location?: {
-        city?: string | null;
-        country?: string;
-        country_code?: string;
-        region?: string | null;
-      };
-    };
-    risk_assessment?: {
-      confidence_score: number;
-      last_reported?: string;
-      risk_level: string;
-      total_reports: number;
-      whitelisted: boolean;
-    };
-    technical_details?: {
-      as_name?: string | null;
-      asn?: string | null;
-      is_public: boolean;
-      is_tor: boolean;
-      usage_type?: string;
-    };
-    // Advanced Scanner fields
-    ports?: Array<{
-      port: number;
-      protocol: string;
-      state: string;
-      service?: string;
-      version?: string;
-      product?: string;
-      extrainfo?: string;
-    }>;
-    host_info?: {
-      hostname?: string;
-      state: string;
-      protocols?: string[];
-    };
-    vulnerabilities?: Array<{
-      service: string;
-      version?: string;
-      product?: string;
-      port?: number;
-      potential_issues: string[];
-      severity: string;
-      recommendation?: string;
-    }>;
-    ssl_analysis?: {
-      basic_info?: any;
-      cipher_info?: any;
-      domain?: string;
-      timestamp?: string;
-    };
-    // Security Scanner fields
-    headers?: {
-      [headerName: string]: {
-        present: boolean;
-        value?: string;
-        score?: number;
-      };
-    };
-    security_score?: number;
-    max_score?: number;
-    grade?: string;
-    email_security?: {
-      domain?: string;
-      spf: {
-        present: boolean;
-        score: number;
-        record?: string;
-      };
-      dmarc: {
-        present: boolean;
-        score: number;
-        record?: string;
-      };
-      dkim: {
-        present: boolean;
-        score: number;
-        selector?: string;
-      };
-      total_score: number;
-      max_score: number;
-      grade: string;
-      timestamp?: string;
-    };
-  };
-  // IP-specific fields
-  ip_details?: {
-    address: string;
-    domain?: string;
-    hostname?: string[];
-    isp?: string;
-    location?: {
-      city?: string | null;
-      country?: string;
-      country_code?: string;
-      region?: string | null;
-    };
-  };
-  risk_assessment?: {
-    confidence_score: number;
-    last_reported?: string;
-    risk_level: string;
-    total_reports: number;
-    whitelisted: boolean;
-  };
-  technical_details?: {
-    as_name?: string | null;
-    asn?: string | null;
-    is_public: boolean;
-    is_tor: boolean;
-    usage_type?: string;
-  };
-  // Domain reconnaissance specific fields
-  domain_info?: {
-    domain: string;
-    whois?: {
-      registrar?: string;
-      creation_date?: string;
-      expiration_date?: string;
-      registrant?: string;
-      country?: string;
-      name_servers?: string[];
-    };
-    dns_records?: {
-      A?: string[];
-      AAAA?: string[];
-      MX?: string[];
-      NS?: string[];
-      CNAME?: string[];
-      TXT?: string[];
-      SOA?: string[];
-    };
-    ssl_info?: {
-      valid?: boolean;
-      issuer?: string;
-      subject?: string;
-      valid_from?: string;
-      valid_until?: string;
-      days_until_expiry?: number;
-      grade?: string;
-    };
-    subdomains?: string[];
-    security_features?: {
-      dnssec?: boolean;
-      dmarc?: string;
-      spf?: string;
-      waf_detected?: string;
-      robots_txt?: {
-        present: boolean;
-        url?: string;
-      };
-      security_txt?: {
-        present: boolean;
-        url?: string;
-      };
-    };
-    geolocation?: {
-      ip?: string;
-      country?: string;
-      city?: string;
-      isp?: string;
-      organization?: string;
-    };
-  };
-  recommendations?: string[];
-  formatted?: string;
-  status: "success" | "error";
-  timestamp?: string;
-  message?: string;
+/* ───────────── helpers ───────────── */
 
-  // Advanced Scanner fields (root level)
-  ports?: Array<{
-    port: number;
-    protocol: string;
-    state: string;
-    service?: string;
-    version?: string;
-    product?: string;
-    extrainfo?: string;
-  }>;
-  host_info?: {
-    hostname?: string;
-    state: string;
-    protocols?: string[];
-  };
-  vulnerabilities?: Array<{
-    service: string;
-    version?: string;
-    product?: string;
-    port?: number;
-    potential_issues: string[];
-    severity: string;
-    recommendation?: string;
-  }>;
-
-  // Security Scanner fields (root level)
-  headers?: {
-    [headerName: string]: {
-      present: boolean;
-      value?: string;
-      score?: number;
-    };
-  };
-  security_score?: number;
-  max_score?: number;
-  grade?: string;
-  email_security?: {
-    domain?: string;
-    spf: {
-      present: boolean;
-      score: number;
-      record?: string;
-    };
-    dmarc: {
-      present: boolean;
-      score: number;
-      record?: string;
-    };
-    dkim: {
-      present: boolean;
-      score: number;
-      selector?: string;
-    };
-    total_score: number;
-    max_score: number;
-    grade: string;
-    timestamp?: string;
-  };
+function riskBadge(level: string | undefined) {
+  if (!level) return { text: "N/A", cls: "text-gray-400 border-gray-400/30 bg-gray-400/10" };
+  const l = level.toLowerCase();
+  if (l === "critical" || l === "high") return { text: level, cls: "text-red-500 border-red-500/30 bg-red-500/10" };
+  if (l === "medium") return { text: level, cls: "text-yellow-500 border-yellow-500/30 bg-yellow-500/10" };
+  return { text: level, cls: "text-green-400 border-green-400/30 bg-green-400/10" };
 }
 
-// Interface for chatbot messages
-interface ChatMessage {
-  id: number;
-  text: string;
-  isUser: boolean;
-  timestamp: string | null;
-}
+/* ───────────── component ───────────── */
 
-export default function Home() {
-  const [integratedInput, setIntegratedInput] = useState("");
-  const [integratedResults, setIntegratedResults] = useState<{
-    urlResults: ScanResult | null;
-    domainResults: ScanResult | null;
-  } | null>(null);
-  const [integratedLoading, setIntegratedLoading] = useState(false);
-  const [integratedViewMode, setIntegratedViewMode] = useState<'normal' | 'json'>('normal');
-  const [ip, setIp] = useState("");
-  const [ipResults, setIpResults] = useState<ScanResult | null>(null);
-  const [logResults, setLogResults] = useState<ScanResult | null>(null);
-  const [loading, setLoading] = useState(false);
+export default function Dashboard() {
+  /* ── Dashboard KPIs ── */
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+
+  /* ── Scan tab ── */
+  const [activeTab, setActiveTab] = useState<"domain" | "ip" | "pcap" | "ports" | "vuln" | "headers" | "email">("domain");
+
+  /* ── Domain / URL ── */
+  const [domainInput, setDomainInput] = useState("");
+  const [domainResults, setDomainResults] = useState<any>(null);
+  const [urlResults, setUrlResults] = useState<any>(null);
+  const [domainLoading, setDomainLoading] = useState(false);
+
+  /* ── IP ── */
+  const [ipInput, setIpInput] = useState("");
+  const [ipResults, setIpResults] = useState<any>(null);
+  const [ipLoading, setIpLoading] = useState(false);
+
+  /* ── PCAP ── */
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isCached, setIsCached] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      text: "Hey! How can I assist you with your cybersecurity concerns today? Do you have a specific question or issue you'd like help with?",
-      isUser: false,
-      timestamp: null,
-    },
-  ]);
-  const [chatInput, setChatInput] = useState("");
-  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const [pcapResults, setPcapResults] = useState<any>(null);
+  const [pcapLoading, setPcapLoading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  // View mode states for each scan type
-  const [ipViewMode, setIpViewMode] = useState<'normal' | 'json'>('normal');
-  const [logViewMode, setLogViewMode] = useState<'normal' | 'json'>('normal');
-
-  // File content modal state
-  const [fileContent, setFileContent] = useState<{
-    domain: string;
-    file_type: string;
-    url: string;
-    content: string;
-    content_length: number;
-    last_modified: string;
-    content_type: string;
-  } | null>(null);
-  const [fileModalOpen, setFileModalOpen] = useState(false);
-  const [loadingFile, setLoadingFile] = useState(false);
-
-  // Advanced Scanner states
+  /* ── Port scan ── */
   const [portTarget, setPortTarget] = useState("");
   const [portResults, setPortResults] = useState<any>(null);
   const [portLoading, setPortLoading] = useState(false);
-  const [portViewMode, setPortViewMode] = useState<'normal' | 'json'>('normal');
 
+  /* ── Vuln scan ── */
   const [vulnTarget, setVulnTarget] = useState("");
   const [vulnResults, setVulnResults] = useState<any>(null);
   const [vulnLoading, setVulnLoading] = useState(false);
-  const [vulnViewMode, setVulnViewMode] = useState<'normal' | 'json'>('normal');
 
-
-  // Security Scanner states
+  /* ── Security headers ── */
   const [headerUrl, setHeaderUrl] = useState("");
   const [headerResults, setHeaderResults] = useState<any>(null);
   const [headerLoading, setHeaderLoading] = useState(false);
-  const [headerViewMode, setHeaderViewMode] = useState<'normal' | 'json'>('normal');
 
+  /* ── Email security ── */
   const [emailDomain, setEmailDomain] = useState("");
   const [emailResults, setEmailResults] = useState<any>(null);
   const [emailLoading, setEmailLoading] = useState(false);
-  const [emailViewMode, setEmailViewMode] = useState<'normal' | 'json'>('normal');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  /* ── Chat ── */
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ text: string; isUser: boolean; ts: string }[]>([
+    { text: "Hello! I'm your CyberRegis AI assistant. Ask me anything about cybersecurity.", isUser: false, ts: "" },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatRef = useRef<HTMLDivElement>(null);
 
+  /* ── View modes ── */
+  const [jsonView, setJsonView] = useState(false);
+
+  /* ── Inline Scan History ── */
+  const [historyScans, setHistoryScans] = useState<ScanHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historySelected, setHistorySelected] = useState<ScanHistoryEntry | null>(null);
+  const HISTORY_PER_PAGE = 8;
+
+  /* ── File content modal ── */
+  const [fileModal, setFileModal] = useState<{ title: string; content: string } | null>(null);
+
+  /* ── Load dashboard stats ── */
   useEffect(() => {
-    // Set initial chat message timestamp on client side to avoid hydration mismatch
-    setChatMessages(prev => prev.map(msg =>
-      msg.id === 1 ? { ...msg, timestamp: new Date().toLocaleTimeString() } : msg
-    ));
+    (async () => {
+      try {
+        const res = await api.getDashboardStats();
+        if (res.data) setStats(res.data);
+      } catch (e) { console.error("Stats load failed:", e); }
+    })();
+    setChatMessages(prev => prev.map((m, i) => i === 0 ? { ...m, ts: new Date().toLocaleTimeString() } : m));
   }, []);
 
-  const checkIp = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setIsCached(false);
-
-    // Check localStorage
-    const storedIps = loadStoredScans("cyberregis_ips");
-    const cached = storedIps.find((scan) => scan.input === ip);
-    if (cached) {
-      setIpResults(cached.result);
-      setIsCached(true);
-      setLoading(false);
-      return;
-    }
-
+  const loadInlineHistory = useCallback(async (page: number) => {
+    setHistoryLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/check-ip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ip }),
-      });
-      const data = await response.json();
-      console.log("IP scan response:", data);
-      console.log("Security analysis data in response:", data.virustotal || data.data?.virustotal);
-      setIpResults(data);
+      const res = await api.getScanHistory({ page, per_page: HISTORY_PER_PAGE });
+      const apiScans = res.data?.scans || [];
+      const apiTotal = res.data?.total || 0;
 
-      upsertStoredScan("cyberregis_ips", {
-        input: ip,
-        result: data,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      setIpResults({
-        status: "error",
-        message: "Failed to check IP. Please try again.",
-      });
-      console.error("Error checking IP:", error);
-    }
-    setLoading(false);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
-    }
-  };
-
-  const handleFileUploadClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const analyzeNetworkLog = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!selectedFile) {
-      setLogResults({
-        status: "error",
-        message: "Please select a file to analyze.",
-      });
-      return;
-    }
-
-    setLoading(true);
-    setIsCached(false);
-
-    // Check localStorage (using file name as key)
-    const storedLogs = loadStoredScans("cyberregis_logs");
-    const cached = storedLogs.find((scan) => scan.input === selectedFile.name);
-    if (cached) {
-      setLogResults(cached.result);
-      setIsCached(true);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      console.log("Uploading file:", selectedFile.name, selectedFile.size);
-
-      const response = await fetch(`${API_URL}/api/analyze-pcap`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Server error:", response.status, errorData);
-        throw new Error(errorData.message || `Server responded with status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log("Analysis response:", data);
-      setLogResults(data);
-
-      // Store in localStorage
-      upsertStoredScan("cyberregis_logs", {
-        input: selectedFile.name,
-        result: data,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      setLogResults({
-        status: "error",
-        message: `Failed to analyze network log: ${error instanceof Error ? error.message : 'Unknown error occurred'}`,
-      });
-      console.error("Error analyzing network log:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFileContent = async (domain: string, fileType: 'robots' | 'security') => {
-    setLoadingFile(true);
-    try {
-      const response = await fetch(`${API_URL}/api/security-file-content`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain, file_type: fileType }),
-      });
-
-      const data = await response.json();
-
-      if (data.status === "success") {
-        setFileContent(data.file_info);
-        setFileModalOpen(true);
+      if (apiTotal > 0) {
+        setHistoryScans(apiScans);
+        setHistoryTotal(apiTotal);
       } else {
-        // Handle error - could show a toast or alert
-        console.error("Failed to fetch file:", data.message);
+        // Fall back to localStorage cache
+        const LOCAL_KEYS: { key: Parameters<typeof loadStoredScans>[0]; type: string }[] = [
+          { key: "cyberregis_integrated", type: "domain" },
+          { key: "cyberregis_ips",        type: "ip" },
+          { key: "cyberregis_ports",      type: "port_scan" },
+          { key: "cyberregis_vuln",       type: "vuln_scan" },
+          { key: "cyberregis_headers",    type: "headers" },
+          { key: "cyberregis_email",      type: "email" },
+          { key: "cyberregis_logs",       type: "pcap" },
+        ];
+        const all: ScanHistoryEntry[] = LOCAL_KEYS.flatMap(({ key, type }) =>
+          loadStoredScans(key).map((s, i) => ({
+            id: i,
+            scan_type: type,
+            target: s.input,
+            status: "completed",
+            timestamp: s.timestamp,
+            result_summary: s.result,
+          } as ScanHistoryEntry))
+        ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        const start = (page - 1) * HISTORY_PER_PAGE;
+        setHistoryScans(all.slice(start, start + HISTORY_PER_PAGE));
+        setHistoryTotal(all.length);
       }
-    } catch (error) {
-      console.error("Error fetching file content:", error);
-    } finally {
-      setLoadingFile(false);
-    }
-  };
+    } catch (e) { console.error("History load failed:", e); }
+    setHistoryLoading(false);
+  }, []);
 
-  const formatResults = (results: ScanResult | null, viewMode: 'normal' | 'json' = 'normal'): JSX.Element => {
-    if (!results) return <></>;
-    if (results.status === "error") {
-      return <p>{results.message || "An error occurred."}</p>;
-    }
+  useEffect(() => { loadInlineHistory(historyPage); }, [historyPage, loadInlineHistory]);
 
-    // JSON view
-    if (viewMode === 'json') {
-      return (
-        <div className="bg-slate-900 rounded-md p-4 overflow-auto">
-          <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
-            {JSON.stringify(results, null, 2)}
-          </pre>
-        </div>
-      );
-    }
+  /* ── Auto-scroll chat ── */
+  useEffect(() => { chatRef.current?.scrollTo(0, chatRef.current.scrollHeight); }, [chatMessages]);
 
-    // Handle PCAP analysis results
-    if (results.data?.pcap_analysis) {
-      return (
-        <div className="space-y-4">
-          {/* File Information */}
-          {results.data.metadata && (
-            <div className="space-y-1">
-              <h4 className="text-sm font-semibold">File Information</h4>
-              <div className="text-xs space-y-1">
-                {Object.entries(results.data.metadata).map(([key, value]) => (
-                  <div key={key} className="flex justify-between">
-                    <span className="text-muted-foreground">{key}:</span>
-                    <span>{String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+  /* ──────────────────────────────────────── */
+  /*                SCAN HANDLERS             */
+  /* ──────────────────────────────────────── */
 
-          {/* Enhanced Security Analysis Results */}
-          {results.data.virustotal && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
-
-              {/* VirusTotal Summary */}
-              {results.data.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <h5 className="font-medium text-blue-900 mb-2 text-xs">📋 Quick Summary</h5>
-                  <pre className="text-xs text-blue-800 whitespace-pre-wrap">{results.data.virustotal_summary}</pre>
-                </div>
-              )}
-
-              {/* Enhanced Security Analysis Data */}
-              {results.data.virustotal.risk_assessment ? (
-                <div className="bg-gray-50 p-3 rounded-lg space-y-3">
-                  {/* Risk Score Display */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium">Risk Score:</span>
-                      <span className={`text-lg font-bold ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
-                        results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
-                          results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
-                        }`}>
-                        {results.data.virustotal.risk_assessment.risk_score}/100
-                      </span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
-                          results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
-                            results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
-                          }`}
-                        style={{ width: `${results.data.virustotal.risk_assessment.risk_score}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  {/* Risk Level Badge */}
-                  <div>
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
-                      results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
-                        results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
-                      }`}>
-                      Risk Level: {results.data.virustotal.risk_assessment.risk_level}
-                    </span>
-                  </div>
-
-                  {/* Detection Statistics */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-red-600">
-                        {results.data.virustotal.risk_assessment.malicious_count || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">Malicious</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-orange-600">
-                        {results.data.virustotal.risk_assessment.suspicious_count || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">Suspicious</div>
-                    </div>
-                  </div>
-
-                  {/* Additional Details */}
-                  <div className="space-y-1 text-xs text-gray-600">
-                    {results.data.virustotal.risk_assessment.detection_ratio && (
-                      <div>Detection Ratio: {results.data.virustotal.risk_assessment.detection_ratio}</div>
-                    )}
-                    {results.data.virustotal.risk_assessment.total_engines && (
-                      <div>Total Engines: {results.data.virustotal.risk_assessment.total_engines}</div>
-                    )}
-                    {results.data.virustotal.metadata?.reputation && (
-                      <div>Reputation: {results.data.virustotal.metadata.reputation}</div>
-                    )}
-                    {results.data.virustotal.metadata?.file_type && (
-                      <div>File Type: {results.data.virustotal.metadata.file_type}</div>
-                    )}
-                    {results.data.virustotal.metadata?.analysis_date && (
-                      <div>Analysis Date: {new Date(results.data.virustotal.metadata.analysis_date * 1000).toLocaleString()}</div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                /* Fallback to legacy structure */
-                results.data.virustotal?.data?.attributes?.stats && (
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-semibold">Security Stats</h4>
-                    <div className="text-xs space-y-1">
-                      {Object.entries(results.data.virustotal.data.attributes.stats).map(([key, value]) => (
-                        <div key={key} className="flex items-center justify-between">
-                          <span className="text-muted-foreground">{key}:</span>
-                          <span>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              )}
-
-              {/* Error Handling */}
-              {results.data.virustotal.error && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <div className="text-yellow-800 text-xs">
-                    ⚠️ Security Analysis Issue: {results.data.virustotal.error}
-                  </div>
-                  <div className="text-xs text-yellow-700 mt-2">
-                    This could be due to:
-                    <ul className="list-disc list-inside mt-1 ml-4">
-                      <li>Rate limiting (try again later)</li>
-                      <li>Invalid API key</li>
-                      <li>File analysis timeout</li>
-                      <li>Network connectivity issues</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {/* Engine Results - Fallback to legacy structure */}
-              {results.data.virustotal?.data?.attributes?.results && (
-                <div className="space-y-1">
-                  <h4 className="text-sm font-semibold">Engine Results</h4>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
-                      <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
-                        <span>{engine}</span>
-                        <span className={`${result.category === 'malicious' ? 'text-red-500' :
-                          result.category === 'suspicious' ? 'text-yellow-500' :
-                            'text-green-500'}`}>
-                          {result.category}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Protocol Distribution */}
-          {results.data.pcap_analysis && (
-            <div className="space-y-1">
-              <h4 className="text-sm font-semibold">Protocol Distribution</h4>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {Object.entries(results.data.pcap_analysis).map(([protocol, count]) => (
-                  <div key={protocol} className="flex justify-between">
-                    <span className="text-muted-foreground">{protocol}:</span>
-                    <span>{String(count)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Protocol Chart */}
-          {results.data.chart_base64 && (
-            <div className="space-y-1">
-              <h4 className="text-sm font-semibold">Protocol Chart</h4>
-              <img
-                src={`data:image/png;base64,${results.data.chart_base64}`}
-                alt="Protocol Analysis Chart"
-                className="max-w-full h-auto rounded-md"
-              />
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Handle IP-specific results (check both root level and nested in data)
-    if (results.ip_details || results.risk_assessment || results.technical_details ||
-      results.data?.ip_details || results.data?.risk_assessment || results.data?.technical_details) {
-
-      // Use data from root level or nested under data
-      const ipDetails = results.ip_details || results.data?.ip_details;
-      const riskAssessment = results.risk_assessment || results.data?.risk_assessment;
-      const technicalDetails = results.technical_details || results.data?.technical_details;
-      const recommendations = results.recommendations || results.data?.recommendations;
-      const virustotalData = results.data?.virustotal;
-
-      // Debug logging
-      console.log("IP Results Debug:", {
-        ipDetails,
-        riskAssessment,
-        technicalDetails,
-        recommendations,
-        virustotalData,
-        fullResults: results
-      });
-
-      return (
-        <div className="space-y-3">
-          {/* IP Details */}
-          {ipDetails && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">IP Address:</span>
-                <span className="text-sm font-mono font-medium">{ipDetails.address}</span>
-              </div>
-              {ipDetails.domain && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Domain:</span>
-                  <span className="text-sm font-medium">{ipDetails.domain}</span>
-                </div>
-              )}
-              {ipDetails.isp && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">ISP:</span>
-                  <span className="text-sm font-medium">{ipDetails.isp}</span>
-                </div>
-              )}
-              {ipDetails.location && (
-                <div className="space-y-1">
-                  <div className="text-sm text-muted-foreground">Location:</div>
-                  <div className="text-sm space-y-1 ml-4">
-                    {ipDetails.location.city && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">City:</span>
-                        <span>{ipDetails.location.city}</span>
-                      </div>
-                    )}
-                    {ipDetails.location.region && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Region:</span>
-                        <span>{ipDetails.location.region}</span>
-                      </div>
-                    )}
-                    {ipDetails.location.country && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Country:</span>
-                        <span>{ipDetails.location.country}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* VirusTotal Analysis for IP */}
-          {virustotalData && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
-
-              {/* VirusTotal Summary */}
-              {results.data?.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <h5 className="font-medium text-blue-900 mb-2 text-xs">📋 Quick Summary</h5>
-                  <pre className="text-xs text-blue-800 whitespace-pre-wrap">{results.data.virustotal_summary}</pre>
-                </div>
-              )}
-
-              {/* Enhanced Security Analysis Data */}
-              {virustotalData.risk_assessment ? (
-                <div className="bg-gray-50 p-3 rounded-lg space-y-3">
-                  {/* Risk Score Display */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium">Risk Score:</span>
-                      <span className={`text-lg font-bold ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
-                        virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
-                          virustotalData.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
-                        }`}>
-                        {virustotalData.risk_assessment.risk_score}/100
-                      </span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
-                          virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
-                            virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
-                          }`}
-                        style={{ width: `${virustotalData.risk_assessment.risk_score}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  {/* Risk Level Badge */}
-                  <div>
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
-                      virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
-                        virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'
-                      }`}>
-                      Risk Level: {virustotalData.risk_assessment.risk_level}
-                    </span>
-                  </div>
-
-                  {/* Detection Statistics */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-red-600">
-                        {virustotalData.risk_assessment.malicious_count || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">Malicious</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-orange-600">
-                        {virustotalData.risk_assessment.suspicious_count || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">Suspicious</div>
-                    </div>
-                  </div>
-
-                  {/* Additional Details */}
-                  <div className="space-y-1 text-xs text-gray-600">
-                    {virustotalData.risk_assessment.detection_ratio && (
-                      <div>Detection Ratio: {virustotalData.risk_assessment.detection_ratio}</div>
-                    )}
-                    {virustotalData.risk_assessment.total_engines && (
-                      <div>Total Engines: {virustotalData.risk_assessment.total_engines}</div>
-                    )}
-                    {virustotalData.metadata?.reputation && (
-                      <div>Reputation: {virustotalData.metadata.reputation}</div>
-                    )}
-                    {virustotalData.metadata?.file_type && (
-                      <div>File Type: {virustotalData.metadata.file_type}</div>
-                    )}
-                    {virustotalData.metadata?.analysis_date && (
-                      <div>Analysis Date: {new Date(virustotalData.metadata.analysis_date * 1000).toLocaleString()}</div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                /* Fallback to legacy structure */
-                virustotalData?.data?.attributes?.stats && (
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-semibold">Security Stats</h4>
-                    <div className="text-xs space-y-1">
-                      {Object.entries(virustotalData.data.attributes.stats).map(([key, value]) => (
-                        <div key={key} className="flex items-center justify-between">
-                          <span className="text-muted-foreground">{key}:</span>
-                          <span>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              )}
-
-              {/* Error Handling */}
-              {virustotalData.error && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <div className="text-yellow-800 text-xs">
-                    ⚠️ Security Analysis Issue: {virustotalData.error}
-                  </div>
-                  <div className="text-xs text-yellow-700 mt-2">
-                    This could be due to:
-                    <ul className="list-disc list-inside mt-1 ml-4">
-                      <li>Rate limiting (try again later)</li>
-                      <li>Invalid API key</li>
-                      <li>IP analysis timeout</li>
-                      <li>Network connectivity issues</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {/* Engine Results - Fallback to legacy structure */}
-              {virustotalData?.data?.attributes?.results && (
-                <div className="space-y-1">
-                  <h4 className="text-sm font-semibold">Engine Results</h4>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {Object.entries(virustotalData.data.attributes.results).slice(0, 8).map(([engine, result]) => (
-                      <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
-                        <span>{engine}</span>
-                        <span className={`${(result as any).category === 'malicious' ? 'text-red-500' :
-                          (result as any).category === 'suspicious' ? 'text-yellow-500' :
-                            'text-green-500'}`}>
-                          {(result as any).category}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* VirusTotal Status - Show when no data is available */}
-          {!virustotalData && (
-            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-              <div className="flex items-center space-x-2">
-                <div className="text-gray-400">🦠</div>
-                <div className="text-xs text-gray-600">
-                  <strong>Security Analysis:</strong> No data available. This could mean:
-                  <ul className="list-disc list-inside mt-1 ml-2">
-                    <li>The backend API doesn't include security analysis data for IPs</li>
-                    <li>The IP hasn't been analyzed by our security systems</li>
-                    <li>There was an error retrieving security data</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Risk Assessment */}
-          {riskAssessment && (
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Risk Assessment:</div>
-              <div className="space-y-1 ml-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Risk Level:</span>
-                  <span className={`text-sm font-medium ${riskAssessment.risk_level === 'High' ? 'text-red-500' :
-                    riskAssessment.risk_level === 'Medium' ? 'text-yellow-500' :
-                      'text-green-500'
-                    }`}>
-                    {riskAssessment.risk_level}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Confidence Score:</span>
-                  <span className="text-sm font-medium">{riskAssessment.confidence_score}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Total Reports:</span>
-                  <span className="text-sm font-medium">{riskAssessment.total_reports}</span>
-                </div>
-                {riskAssessment.last_reported && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Last Reported:</span>
-                    <span className="text-sm font-medium">{new Date(riskAssessment.last_reported).toLocaleDateString()}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Technical Details */}
-          {technicalDetails && (
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Technical Details:</div>
-              <div className="space-y-1 ml-4">
-                {technicalDetails.as_name && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">AS Name:</span>
-                    <span className="text-sm font-medium">{technicalDetails.as_name}</span>
-                  </div>
-                )}
-                {technicalDetails.asn && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">ASN:</span>
-                    <span className="text-sm font-medium">{technicalDetails.asn}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Public IP:</span>
-                  <span className="text-sm font-medium">{technicalDetails.is_public ? 'Yes' : 'No'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">TOR Exit Node:</span>
-                  <span className="text-sm font-medium">{technicalDetails.is_tor ? 'Yes' : 'No'}</span>
-                </div>
-                {technicalDetails.usage_type && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Usage Type:</span>
-                    <span className="text-sm font-medium">{technicalDetails.usage_type}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {recommendations && recommendations.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Recommendations:</div>
-              <div className="space-y-1 ml-4">
-                {recommendations.map((rec, index) => (
-                  <div key={index} className="text-sm text-muted-foreground">• {rec}</div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Handle Port Scanner results
-    if (results.ports || results.data?.ports) {
-      const ports = results.ports || results.data?.ports;
-      const hostInfo = results.host_info || results.data?.host_info;
-      if (!ports) return <></>;
-
-      return (
-        <div className="space-y-3">
-          {hostInfo && (
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Host Information:</div>
-              <div className="space-y-1 ml-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Hostname:</span>
-                  <span className="text-sm font-medium">{hostInfo.hostname || 'N/A'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">State:</span>
-                  <span className="text-sm font-medium">{hostInfo.state}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground">Open Ports ({ports.length}):</div>
-            <div className="space-y-2">
-              {ports.map((port: any, index: number) => (
-                <div key={index} className="border border-border/20 rounded p-2 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-mono font-medium">Port {port.port}/{port.protocol}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${port.state === 'open' ? 'bg-green-500/20 text-green-600' : 'bg-gray-500/20 text-gray-600'
-                      }`}>
-                      {port.state}
-                    </span>
-                  </div>
-                  {port.service && (
-                    <div className="text-xs text-muted-foreground">Service: {port.service}</div>
-                  )}
-                  {port.product && (
-                    <div className="text-xs text-muted-foreground">Product: {port.product}</div>
-                  )}
-                  {port.version && (
-                    <div className="text-xs text-muted-foreground">Version: {port.version}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Handle Vulnerability Scanner results
-    if (results.vulnerabilities || results.data?.vulnerabilities) {
-      const vulnerabilities = results.vulnerabilities || results.data?.vulnerabilities;
-      if (!vulnerabilities) return <></>;
-
-      return (
-        <div className="space-y-3">
-          <div className="text-sm text-muted-foreground">Vulnerabilities Found ({vulnerabilities.length}):</div>
-          <div className="space-y-2">
-            {vulnerabilities.map((vuln: any, index: number) => (
-              <div key={index} className="border border-border/20 rounded p-2 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{vuln.service}</span>
-                  <span className={`text-xs px-2 py-1 rounded ${vuln.severity === 'High' ? 'bg-red-500/20 text-red-600' :
-                    vuln.severity === 'Medium' ? 'bg-yellow-500/20 text-yellow-600' :
-                      'bg-green-500/20 text-green-600'
-                    }`}>
-                    {vuln.severity}
-                  </span>
-                </div>
-                {vuln.version && (
-                  <div className="text-xs text-muted-foreground">Version: {vuln.version}</div>
-                )}
-                {vuln.port && (
-                  <div className="text-xs text-muted-foreground">Port: {vuln.port}</div>
-                )}
-                {vuln.potential_issues && vuln.potential_issues.length > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    Issues: {vuln.potential_issues.join(', ')}
-                  </div>
-                )}
-                {vuln.recommendation && (
-                  <div className="text-xs text-muted-foreground">Recommendation: {vuln.recommendation}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-
-    // Handle Security Headers results
-    if (results.headers || results.data?.headers) {
-      const headers = (results.headers || results.data?.headers || {}) as Record<
-        string,
-        { present?: boolean; value?: string }
-      >;
-      const securityScore = results.security_score || results.data?.security_score;
-      const grade = results.grade || results.data?.grade;
-      return (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground">Security Score:</div>
-            <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold">{grade}</span>
-              <span className="text-sm text-muted-foreground">
-                ({securityScore}/{results.max_score || results.data?.max_score})
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground">Security Headers:</div>
-            <div className="space-y-2">
-              {Object.entries(headers).map(([headerName, headerInfo]) => {
-                const present = !!headerInfo?.present;
-                const value = headerInfo?.value;
-                return (
-                  <div key={headerName} className="border border-border/20 rounded p-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{headerName}</span>
-                      <span className={`text-xs px-2 py-1 rounded ${present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                        }`}>
-                        {present ? 'Present' : 'Missing'}
-                      </span>
-                    </div>
-                    {value && (
-                      <div className="text-xs text-muted-foreground mt-1">{value}</div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Handle Email Security results
-    if (results.email_security || results.data?.email_security) {
-      const emailSecurity = results.email_security || results.data?.email_security;
-      return (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground">Email Security Score:</div>
-            <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold">{emailSecurity?.grade ?? "N/A"}</span>
-              <span className="text-sm text-muted-foreground">
-                ({emailSecurity?.total_score ?? "–"}/{emailSecurity?.max_score ?? "–"})
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground">Security Features:</div>
-            <div className="space-y-2">
-              {["spf", "dmarc", "dkim"].map((feature) => {
-                const info = (emailSecurity as Record<string, any>)[feature];
-                if (!info) return null;
-                const present = !!info.present;
-                return (
-                  <div key={feature} className="border border-border/20 rounded p-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{feature.toUpperCase()}</span>
-                      <span className={`text-xs px-2 py-1 rounded ${present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                        }`}>
-                        {present ? 'Present' : 'Missing'}
-                      </span>
-                    </div>
-                    {present && info.record && (
-                      <div className="text-xs text-muted-foreground mt-1 font-mono">{info.record}</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Handle Domain reconnaissance results
-    if (results.domain_info) {
-      return (
-        <div className="space-y-4">
-          {/* Domain Overview */}
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Domain Information:</span>
-            <div className="text-sm pl-4 space-y-1">
-              <div>Domain: {results.domain_info.domain}</div>
-              {results.domain_info.geolocation?.ip && (
-                <div>Primary IP: {results.domain_info.geolocation.ip}</div>
-              )}
-            </div>
-          </div>
-
-          {/* WHOIS Information */}
-          {results.domain_info.whois && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">WHOIS Information:</span>
-              <div className="text-sm pl-4 space-y-1">
-                {results.domain_info.whois.registrar && (
-                  <div>Registrar: {results.domain_info.whois.registrar}</div>
-                )}
-                {results.domain_info.whois.creation_date && (
-                  <div>Created: {new Date(results.domain_info.whois.creation_date).toLocaleDateString()}</div>
-                )}
-                {results.domain_info.whois.expiration_date && (
-                  <div>Expires: {new Date(results.domain_info.whois.expiration_date).toLocaleDateString()}</div>
-                )}
-                {results.domain_info.whois.registrant && (
-                  <div>Registrant: {results.domain_info.whois.registrant}</div>
-                )}
-                {results.domain_info.whois.country && (
-                  <div>Country: {results.domain_info.whois.country}</div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* DNS Records */}
-          {results.domain_info.dns_records && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">DNS Records:</span>
-              <div className="text-sm pl-4 space-y-1">
-                {Object.entries(results.domain_info.dns_records).map(([type, records]) => (
-                  records && records.length > 0 && (
-                    <div key={type}>
-                      <span className="font-medium">{type}:</span> {records.slice(0, 3).join(", ")}
-                      {records.length > 3 && ` (and ${records.length - 3} more)`}
-                    </div>
-                  )
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* SSL Certificate */}
-          {results.domain_info.ssl_info && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">SSL Certificate:</span>
-              <div className="text-sm pl-4 space-y-1">
-                <div>Valid: {results.domain_info.ssl_info.valid ? "Yes" : "No"}</div>
-                {results.domain_info.ssl_info.issuer && (
-                  <div>Issuer: {results.domain_info.ssl_info.issuer}</div>
-                )}
-                {results.domain_info.ssl_info.valid_until && (
-                  <div>Expires: {new Date(results.domain_info.ssl_info.valid_until).toLocaleDateString()}</div>
-                )}
-                {results.domain_info.ssl_info.days_until_expiry !== undefined && (
-                  <div>Days Until Expiry: {results.domain_info.ssl_info.days_until_expiry}</div>
-                )}
-                {results.domain_info.ssl_info.grade && (
-                  <div>SSL Grade: {results.domain_info.ssl_info.grade}</div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Security Features */}
-          {results.domain_info.security_features && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Security Features:</span>
-              <div className="text-sm pl-4 space-y-1">
-                <div>DNSSEC: {results.domain_info.security_features.dnssec ? "Enabled" : "Disabled"}</div>
-                {results.domain_info.security_features.dmarc && (
-                  <div>DMARC: {results.domain_info.security_features.dmarc}</div>
-                )}
-                {results.domain_info.security_features.spf && (
-                  <div>SPF: {results.domain_info.security_features.spf}</div>
-                )}
-                {results.domain_info.security_features.waf_detected && (
-                  <div>WAF: {results.domain_info.security_features.waf_detected}</div>
-                )}
-
-                {/* robots.txt with clickable link */}
-                <div className="flex items-center gap-2">
-                  <span>robots.txt: {results.domain_info.security_features.robots_txt?.present ? "Present" : "Not Found"}</span>
-                  {results.domain_info.security_features.robots_txt?.present && results.domain_info.security_features.robots_txt.url && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fetchFileContent(results.domain_info!.domain, 'robots')}
-                      disabled={loadingFile}
-                      className="h-6 px-2 text-xs"
-                    >
-                      <FileText className="w-3 h-3 mr-1" />
-                      View
-                    </Button>
-                  )}
-                </div>
-
-                {/* security.txt with clickable link */}
-                <div className="flex items-center gap-2">
-                  <span>security.txt: {results.domain_info.security_features.security_txt?.present ? "Present" : "Not Found"}</span>
-                  {results.domain_info.security_features.security_txt?.present && results.domain_info.security_features.security_txt.url && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fetchFileContent(results.domain_info!.domain, 'security')}
-                      disabled={loadingFile}
-                      className="h-6 px-2 text-xs"
-                    >
-                      <FileText className="w-3 h-3 mr-1" />
-                      View
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Subdomains */}
-          {results.domain_info.subdomains && results.domain_info.subdomains.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Subdomains Found:</span>
-              <div className="text-sm pl-4 space-y-1">
-                {results.domain_info.subdomains.slice(0, 10).map((subdomain, index) => (
-                  <div key={index}>{subdomain}</div>
-                ))}
-                {results.domain_info.subdomains.length > 10 && (
-                  <div className="text-muted-foreground">
-                    ... and {results.domain_info.subdomains.length - 10} more subdomains
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Geolocation */}
-          {results.domain_info.geolocation && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Server Location:</span>
-              <div className="text-sm pl-4 space-y-1">
-                {results.domain_info.geolocation.country && (
-                  <div>Country: {results.domain_info.geolocation.country}</div>
-                )}
-                {results.domain_info.geolocation.city && (
-                  <div>City: {results.domain_info.geolocation.city}</div>
-                )}
-                {results.domain_info.geolocation.isp && (
-                  <div>ISP: {results.domain_info.geolocation.isp}</div>
-                )}
-                {results.domain_info.geolocation.organization && (
-                  <div>Organization: {results.domain_info.geolocation.organization}</div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {results.recommendations && results.recommendations.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-green-600">Recommendations:</span>
-              <div className="text-sm pl-4 space-y-1">
-                {results.recommendations.map((rec, index) => (
-                  <div key={index}>• {rec}</div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Handle URL and IP results - Normal view (Clean design)
-    if (results.data) {
-      return (
-        <div className="space-y-3">
-          {/* Basic Status - Clean and minimal */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Status:</span>
-              <span className={`text-sm font-medium ${results.data.threat_analysis?.is_malicious ? 'text-red-500' : 'text-green-500'}`}>
-                {results.data.threat_analysis?.is_malicious ? "Malicious" : "Safe"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Risk Level:</span>
-              <span className="text-sm font-medium">{results.data.additional_checks?.domain_analysis?.risk_level || "Unknown"}</span>
-            </div>
-            {results.data.additional_checks?.ssl_security && (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">SSL Valid:</span>
-                <span className={`text-sm font-medium ${results.data.additional_checks.ssl_security.valid ? 'text-green-500' : 'text-red-500'}`}>
-                  {results.data.additional_checks.ssl_security.valid ? "Yes" : "No"}
-                </span>
-              </div>
-            )}
-            {results.data.url_analysis?.input_url && (
-              <div className="space-y-1">
-                <span className="text-sm text-muted-foreground">Analyzed URL:</span>
-                <div className="text-xs font-mono pl-4 break-all">{results.data.url_analysis.input_url}</div>
-              </div>
-            )}
-          </div>
-
-          {/* Potential Threats - Minimal design */}
-          {results.data.potential_threats && results.data.potential_threats.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-red-500">Potential Threats:</span>
-              {results.data.potential_threats.map((threat, index) => (
-                <div key={index} className="text-sm pl-4 space-y-1">
-                  <div>Type: {threat.type}</div>
-                  <div>Severity: {threat.severity}</div>
-                  {threat.domain && <div>Domain: {threat.domain}</div>}
-                  {threat.source && <div>Source: {threat.source}</div>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Suspicious IPs */}
-          {results.data.suspicious_ips && results.data.suspicious_ips.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-yellow-600">Suspicious IPs:</span>
-              <div className="text-sm pl-4">
-                {results.data.suspicious_ips.map((ip, index) => (
-                  <div key={index} className="font-mono">{ip}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recommendations */}
-          {results.data.recommendations && results.data.recommendations.length > 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-green-600">Recommendations:</span>
-              <div className="text-sm pl-4 space-y-1">
-                {results.data.recommendations.map((rec, index) => (
-                  <div key={index}>• {rec}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* VirusTotal Results - Clean stats */}
-          {results.data.virustotal?.data?.attributes?.stats && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Security Analysis:</span>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {Object.entries(results.data.virustotal.data.attributes.stats).map(([key, value]) => (
-                  <div key={key} className="text-center bg-muted/30 p-2 rounded">
-                    <div className="text-lg font-bold">{value}</div>
-                    <div className="text-xs text-muted-foreground capitalize">{key.replace('_', ' ')}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* VirusTotal Engine Results - Simplified */}
-          {results.data.virustotal?.data?.attributes?.results && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Engine Results:</span>
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
-                  <div key={engine} className="flex justify-between text-sm bg-muted/20 p-1 rounded">
-                    <span>{engine}</span>
-                    <span className={`${result.category === 'malicious' ? 'text-red-500' :
-                      result.category === 'suspicious' ? 'text-yellow-500' :
-                        'text-green-500'}`}>
-                      {result.category}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Technical Details - Properly formatted */}
-          {(results.data?.additional_checks || results.data?.threat_analysis || results.data?.url_analysis) && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Technical Details:</span>
-
-              {/* URL Analysis */}
-              {results.data.url_analysis && (
-                <div className="space-y-1">
-                  <div className="text-sm font-medium">URL Analysis:</div>
-                  <div className="text-sm pl-4 space-y-1">
-                    <div>Input URL: {results.data.url_analysis.input_url}</div>
-                    {results.data.url_analysis.parsed_details && (
-                      <div className="space-y-1">
-                        <div>Domain: {results.data.url_analysis.parsed_details.domain}</div>
-                        <div>Scheme: {results.data.url_analysis.parsed_details.scheme}</div>
-                        <div>Path: {results.data.url_analysis.parsed_details.path}</div>
-                        {results.data.url_analysis.parsed_details.fragment && (
-                          <div>Fragment: {results.data.url_analysis.parsed_details.fragment}</div>
-                        )}
-                      </div>
-                    )}
-                    {results.data.url_analysis.security_check_time && (
-                      <div>Check Time: {new Date(results.data.url_analysis.security_check_time).toLocaleString()}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Domain Analysis */}
-              {results.data.additional_checks?.domain_analysis && (
-                <div className="space-y-1">
-                  <div className="text-sm font-medium">Domain Analysis:</div>
-                  <div className="text-sm pl-4 space-y-1">
-                    <div>Risk Level: {results.data.additional_checks.domain_analysis.risk_level}</div>
-                    {results.data.additional_checks.domain_analysis.risk_score !== undefined && (
-                      <div>Risk Score: {results.data.additional_checks.domain_analysis.risk_score}</div>
-                    )}
-                    {results.data.additional_checks.domain_analysis.analysis && (
-                      <div className="space-y-1">
-                        <div>Domain Length: {results.data.additional_checks.domain_analysis.analysis.length}</div>
-                        <div>Subdomains: {results.data.additional_checks.domain_analysis.analysis.subdomains}</div>
-                        <div>Suspicious TLD: {results.data.additional_checks.domain_analysis.analysis.suspicious_tld ? "Yes" : "No"}</div>
-                        <div>Special Characters: {results.data.additional_checks.domain_analysis.analysis.special_chars ? "Yes" : "No"}</div>
-                      </div>
-                    )}
-                    {results.data.additional_checks.domain_analysis.whois && (
-                      <div className="space-y-1">
-                        <div className="font-medium">WHOIS Information:</div>
-                        <div>Registrar: {results.data.additional_checks.domain_analysis.whois.registrar}</div>
-                        <div>Created: {new Date(results.data.additional_checks.domain_analysis.whois.creation_date).toLocaleDateString()}</div>
-                        <div>Expires: {new Date(results.data.additional_checks.domain_analysis.whois.expiration_date).toLocaleDateString()}</div>
-                        {results.data.additional_checks.domain_analysis.whois.name_servers && (
-                          <div>Name Servers: {results.data.additional_checks.domain_analysis.whois.name_servers.slice(0, 2).join(", ")}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* SSL Security */}
-              {results.data.additional_checks?.ssl_security && (
-                <div className="space-y-1">
-                  <div className="text-sm font-medium">SSL Security:</div>
-                  <div className="text-sm pl-4 space-y-1">
-                    <div>Status: {results.data.additional_checks.ssl_security.valid ? "Valid" : "Invalid"}</div>
-                    {results.data.additional_checks.ssl_security.status_code && (
-                      <div>Status Code: {results.data.additional_checks.ssl_security.status_code}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Threat Analysis */}
-              {results.data.threat_analysis && (
-                <div className="space-y-1">
-                  <div className="text-sm font-medium">Threat Analysis:</div>
-                  <div className="text-sm pl-4 space-y-1">
-                    <div>Malicious: {results.data.threat_analysis.is_malicious ? "Yes" : "No"}</div>
-                    <div>Threats Found: {results.data.threat_analysis.threats_found || 0}</div>
-                    {results.data.threat_analysis.google_safe_browsing && (
-                      <div>Google Safe Browsing: {results.data.threat_analysis.google_safe_browsing.status}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Suspicious Patterns */}
-              {results.data.additional_checks?.suspicious_patterns && (
-                <div className="space-y-1">
-                  <div className="text-sm font-medium">Pattern Analysis:</div>
-                  <div className="text-sm pl-4 space-y-1">
-                    <div>Suspicious Patterns Found: {results.data.additional_checks.suspicious_patterns.found ? "Yes" : "No"}</div>
-                    <div>Risk Level: {results.data.additional_checks.suspicious_patterns.risk_level}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Additional Information */}
-          {results.data.metadata && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">Additional Info:</span>
-              <div className="space-y-1">
-                {Object.entries(results.data.metadata).map(([key, value]) => (
-                  <div key={key} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{key}:</span>
-                    <span>{String(value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Fallback for any other data structure
-    return (
-      <div className="p-2">
-        <p><strong>Analysis Results:</strong></p>
-        <p className="mt-1">
-          {results.message || "Analysis completed successfully. Switch to JSON view for detailed technical data."}
-        </p>
-      </div>
-    );
-  };
-
-  const addChatMessage = (text: string, isUser: boolean = false) => {
-    const newMessage: ChatMessage = {
-      id: chatMessages.length + 1,
-      text,
-      isUser,
-      timestamp: new Date().toLocaleTimeString(),
-    };
-    setChatMessages((prev) => [...prev, newMessage]);
-  };
-
-  // Advanced Scanner Functions
-  const scanPorts = async (e: React.FormEvent<HTMLFormElement>) => {
+  const runDomainScan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!domainInput.trim()) return;
+    setDomainLoading(true);
+    setDomainResults(null);
+    setUrlResults(null);
+
+    const cached = loadStoredScans("cyberregis_integrated").find(s => s.input === domainInput);
+    if (cached) { setDomainResults(cached.result.domainResults); setUrlResults(cached.result.urlResults); setDomainLoading(false); return; }
+
+    const isUrl = domainInput.startsWith("http://") || domainInput.startsWith("https://");
+    const urlToScan = isUrl ? domainInput : `https://${domainInput}`;
+    const domain = isUrl ? new URL(domainInput).hostname : domainInput.replace(/^www\./, "");
+    try {
+      const [uRes, dRes] = await Promise.all([api.checkUrl(urlToScan), api.analyzeDomain(domain)]);
+      setUrlResults(uRes);
+      setDomainResults(dRes);
+      upsertStoredScan("cyberregis_integrated", { input: domainInput, result: { urlResults: uRes, domainResults: dRes }, timestamp: new Date().toISOString() });
+    } catch (e: any) {
+      setDomainResults({ status: "error", message: e.message });
+    }
+    setDomainLoading(false);
+  };
+
+  const runIpScan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ipInput.trim()) return;
+    setIpLoading(true);
+    setIpResults(null);
+    const cached = loadStoredScans("cyberregis_ips").find(s => s.input === ipInput);
+    if (cached) { setIpResults(cached.result); setIpLoading(false); return; }
+    try {
+      const res = await api.checkIp(ipInput.trim());
+      setIpResults(res);
+      upsertStoredScan("cyberregis_ips", { input: ipInput, result: res, timestamp: new Date().toISOString() });
+    } catch (e: any) { setIpResults({ status: "error", message: e.message }); }
+    setIpLoading(false);
+  };
+
+  const runPcapScan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile) return;
+    setPcapLoading(true);
+    setPcapResults(null);
+    try {
+      const res = await api.analyzePcap(selectedFile);
+      setPcapResults(res);
+    } catch (e: any) { setPcapResults({ status: "error", message: e.message }); }
+    setPcapLoading(false);
+  };
+
+  const runPortScan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!portTarget.trim()) return;
     setPortLoading(true);
     setPortResults(null);
-    setIsCached(false);
-
-    const storedPorts = loadStoredScans("cyberregis_ports");
-    const cached = storedPorts.find((scan) => scan.input === portTarget);
-    if (cached) {
-      setPortResults(cached.result);
-      setIsCached(true);
-      setPortLoading(false);
-      return;
-    }
-
+    const cached = loadStoredScans("cyberregis_ports").find(s => s.input === portTarget);
+    if (cached) { setPortResults(cached.result); setPortLoading(false); return; }
     try {
-      const response = await fetch(`${API_URL}/api/scan-ports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: portTarget }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPortResults(data);
-        upsertStoredScan("cyberregis_ports", {
-          input: portTarget,
-          result: data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        setPortResults({
-          status: "error",
-          message: `Port scan failed: ${response.statusText}`,
-        });
-      }
-    } catch (error) {
-      setPortResults({
-        status: "error",
-        message: `Port scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    } finally {
-      setPortLoading(false);
-    }
+      const res = await api.scanPorts(portTarget.trim());
+      setPortResults(res);
+      upsertStoredScan("cyberregis_ports", { input: portTarget, result: res, timestamp: new Date().toISOString() });
+    } catch (e: any) { setPortResults({ status: "error", message: e.message }); }
+    setPortLoading(false);
   };
 
-  const scanVulnerabilities = async (e: React.FormEvent<HTMLFormElement>) => {
+  const runVulnScan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!vulnTarget.trim()) return;
     setVulnLoading(true);
     setVulnResults(null);
-    setIsCached(false);
-
-    const storedVulns = loadStoredScans("cyberregis_vuln");
-    const cached = storedVulns.find((scan) => scan.input === vulnTarget);
-    if (cached) {
-      setVulnResults(cached.result);
-      setIsCached(true);
-      setVulnLoading(false);
-      return;
-    }
-
+    const cached = loadStoredScans("cyberregis_vuln").find(s => s.input === vulnTarget);
+    if (cached) { setVulnResults(cached.result); setVulnLoading(false); return; }
     try {
-      const response = await fetch(`${API_URL}/api/vulnerability-scan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: vulnTarget }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setVulnResults(data);
-        upsertStoredScan("cyberregis_vuln", {
-          input: vulnTarget,
-          result: data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        setVulnResults({
-          status: "error",
-          message: `Vulnerability scan failed: ${response.statusText}`,
-        });
-      }
-    } catch (error) {
-      setVulnResults({
-        status: "error",
-        message: `Vulnerability scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    } finally {
-      setVulnLoading(false);
-    }
+      const res = await api.scanVulnerabilities(vulnTarget.trim());
+      setVulnResults(res);
+      upsertStoredScan("cyberregis_vuln", { input: vulnTarget, result: res, timestamp: new Date().toISOString() });
+    } catch (e: any) { setVulnResults({ status: "error", message: e.message }); }
+    setVulnLoading(false);
   };
 
-
-  // Security Scanner Functions
-  const scanSecurityHeaders = async (e: React.FormEvent<HTMLFormElement>) => {
+  const runHeaderScan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!headerUrl.trim()) return;
     setHeaderLoading(true);
     setHeaderResults(null);
-    setIsCached(false);
-
-    const storedHeaders = loadStoredScans("cyberregis_headers");
-    const cached = storedHeaders.find((scan) => scan.input === headerUrl);
-    if (cached) {
-      setHeaderResults(cached.result);
-      setIsCached(true);
-      setHeaderLoading(false);
-      return;
-    }
-
+    const cached = loadStoredScans("cyberregis_headers").find(s => s.input === headerUrl);
+    if (cached) { setHeaderResults(cached.result); setHeaderLoading(false); return; }
     try {
-      const response = await fetch(`${API_URL}/api/security-headers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: headerUrl }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setHeaderResults(data);
-        upsertStoredScan("cyberregis_headers", {
-          input: headerUrl,
-          result: data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        setHeaderResults({
-          status: "error",
-          message: `Security headers scan failed: ${response.statusText}`,
-        });
-      }
-    } catch (error) {
-      setHeaderResults({
-        status: "error",
-        message: `Security headers scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    } finally {
-      setHeaderLoading(false);
-    }
+      const res = await api.scanSecurityHeaders(headerUrl.trim());
+      setHeaderResults(res);
+      upsertStoredScan("cyberregis_headers", { input: headerUrl, result: res, timestamp: new Date().toISOString() });
+    } catch (e: any) { setHeaderResults({ status: "error", message: e.message }); }
+    setHeaderLoading(false);
   };
 
-  const analyzeEmailSecurity = async (e: React.FormEvent<HTMLFormElement>) => {
+  const runEmailScan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!emailDomain.trim()) return;
     setEmailLoading(true);
     setEmailResults(null);
-    setIsCached(false);
-
-    const storedEmails = loadStoredScans("cyberregis_email");
-    const cached = storedEmails.find((scan) => scan.input === emailDomain);
-    if (cached) {
-      setEmailResults(cached.result);
-      setIsCached(true);
-      setEmailLoading(false);
-      return;
-    }
-
+    const cached = loadStoredScans("cyberregis_email").find(s => s.input === emailDomain);
+    if (cached) { setEmailResults(cached.result); setEmailLoading(false); return; }
     try {
-      const response = await fetch(`${API_URL}/api/email-security`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: emailDomain }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setEmailResults(data);
-        upsertStoredScan("cyberregis_email", {
-          input: emailDomain,
-          result: data,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        setEmailResults({
-          status: "error",
-          message: `Email security analysis failed: ${response.statusText}`,
-        });
-      }
-    } catch (error) {
-      setEmailResults({
-        status: "error",
-        message: `Email security analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    } finally {
-      setEmailLoading(false);
-    }
+      const res = await api.scanEmailSecurity(emailDomain.trim());
+      setEmailResults(res);
+      upsertStoredScan("cyberregis_email", { input: emailDomain, result: res, timestamp: new Date().toISOString() });
+    } catch (e: any) { setEmailResults({ status: "error", message: e.message }); }
+    setEmailLoading(false);
   };
 
-  const runIntegratedScan = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIntegratedLoading(true);
-    setIntegratedResults(null);
-
-    // Check localStorage for cached results
-    const storedIntegrated = loadStoredScans("cyberregis_integrated");
-    const cached = storedIntegrated.find((scan) => scan.input === integratedInput);
-    if (cached) {
-      setIntegratedResults(cached.result as any);
-      setIsCached(true);
-      setIntegratedLoading(false);
-      return;
-    }
-
-    // Check if input is a URL or domain
-    const isUrl = integratedInput.startsWith('http://') || integratedInput.startsWith('https://');
-    const domain = isUrl ? new URL(integratedInput).hostname : integratedInput;
-
-    try {
-      // Run both scans in parallel
-      const [urlResponse, domainResponse] = await Promise.all([
-        fetch(`${API_URL}/api/check-url`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: integratedInput }),
-        }),
-        fetch(`${API_URL}/api/analyze-domain`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ domain }),
-        }),
-      ]);
-
-      const urlData = await urlResponse.json();
-      const domainData = await domainResponse.json();
-
-      setIntegratedResults({
-        urlResults: urlData,
-        domainResults: domainData,
-      });
-
-      upsertStoredScan("cyberregis_integrated", {
-        input: integratedInput,
-        result: { urlResults: urlData, domainResults: domainData } as any,
-        timestamp: new Date().toISOString(),
-      });
-
-    } catch (error) {
-      setIntegratedResults({
-        urlResults: {
-          status: "error",
-          message: `Integrated scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-        },
-        domainResults: {
-          status: "error",
-          message: `Integrated scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-        },
-      });
-      console.error("Error in integrated scan:", error);
-    } finally {
-      setIntegratedLoading(false);
-    }
-  };
-
-  const handleChatSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const sendChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-
-    addChatMessage(chatInput, true);
+    const msg = chatInput.trim();
+    setChatMessages(p => [...p, { text: msg, isUser: true, ts: new Date().toLocaleTimeString() }]);
     setChatInput("");
-    setLoading(true);
-
+    setChatLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: chatInput }),
-      });
-      const data = await response.json();
-
-      if (data.status === "error") {
-        throw new Error(data.message || "Failed to get response");
-      }
-
-      addChatMessage(data.data.response || "No response received.", false);
-    } catch (error) {
-      addChatMessage("Sorry, I couldn't process your request. Please try again.", false);
-      console.error("Error in chat:", error);
-    } finally {
-      setLoading(false);
-    }
+      const res = await api.sendChatMessage(msg);
+      setChatMessages(p => [...p, { text: res.data?.response || "No response.", isUser: false, ts: new Date().toLocaleTimeString() }]);
+    } catch { setChatMessages(p => [...p, { text: "Sorry, I couldn't process your request.", isUser: false, ts: new Date().toLocaleTimeString() }]); }
+    setChatLoading(false);
   };
 
-  // Auto-scroll to bottom of chat
+  const fetchFileContent = async (domain: string, fileType: "robots" | "security") => {
+    try {
+      const res = await api.getSecurityFileContent(domain, fileType);
+      if (res.status === "success" && res.file_info) {
+        setFileModal({ title: `${fileType === "robots" ? "robots.txt" : "security.txt"} — ${domain}`, content: res.file_info.content });
+      } else {
+        setFileModal({ title: `${fileType === "robots" ? "robots.txt" : "security.txt"} — ${domain}`, content: "File not found on this domain." });
+      }
+    } catch { setFileModal({ title: "Error", content: "Failed to fetch file content." }); }
+  };
+
+  const anyLoading = domainLoading || ipLoading || pcapLoading || portLoading || vulnLoading || headerLoading || emailLoading;
+
+  // Refresh history whenever a scan finishes
   useEffect(() => {
-    if (chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [chatMessages]);
+    if (!anyLoading) { loadInlineHistory(historyPage); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyLoading]);
+
+  /* ──────────────────────────────────────── */
+  /*                   TABS                   */
+  /* ──────────────────────────────────────── */
+
+  const TABS = [
+    { id: "domain" as const, label: "Domain Recon", icon: Globe },
+    { id: "ip" as const, label: "IP Intel", icon: Network },
+    { id: "pcap" as const, label: "PCAP Analysis", icon: Wifi },
+    { id: "ports" as const, label: "Port Scan", icon: Server },
+    { id: "vuln" as const, label: "Vuln Scan", icon: Bug },
+    { id: "headers" as const, label: "HTTP Headers", icon: Lock },
+    { id: "email" as const, label: "Email Security", icon: Mail },
+  ];
+
+  /* ──────────────────────────────────────── */
+  /*                  RENDER                  */
+  /* ──────────────────────────────────────── */
 
   return (
-    <div
-      className="min-h-screen bg-background"
-      style={{
-        backgroundImage: "radial-gradient(circle at 50% 50%, hsl(var(--background)) 0%, hsl(var(--card)) 100%)",
-      }}
-    >
-      <header className="border-b border-border/40 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full"></div>
-                <Shield className="w-8 h-8 text-primary relative z-10" />
-              </div>
-              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/50">
-                CyberRegis
-              </span>
+    <div className="min-h-screen bg-background">
+      {/* Nav */}
+      <header className="sticky top-0 z-50 border-b border-primary/20 bg-background/95 backdrop-blur-md">
+        <div className="flex h-16 w-full items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="relative">
+              <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
+              <Shield className="h-6 w-6 text-primary relative z-10" />
             </div>
-            <nav className="flex items-center space-x-6">
-              <Link href="/" className="text-primary transition-colors">
-                Dashboard
-              </Link>
-              <Link href="/resources" className="text-foreground hover:text-primary transition-colors">
-                Resources
-              </Link>
-              <Link href="/monitoring" className="text-foreground hover:text-primary transition-colors">
-                Monitoring
-              </Link>
-              <div className="flex items-center space-x-1">
-                <Activity className="w-4 h-4 text-green-500 animate-pulse" />
-                <span className="text-sm text-muted-foreground">Active</span>
-              </div>
-            </nav>
-          </div>
+            <span className="text-lg font-bold bg-gradient-to-r from-primary to-primary/50 bg-clip-text text-transparent">CyberRegis</span>
+          </Link>
+          <nav className="flex items-center gap-6 text-sm">
+            <Link href="/" className="text-primary font-semibold">Dashboard</Link>
+            <Link href="/threat-intel" className="text-muted-foreground hover:text-primary transition-colors">Threat Intel</Link>
+            <Link href="/cve" className="text-muted-foreground hover:text-primary transition-colors">CVE Database</Link>
+            <Link href="/history" className="text-muted-foreground hover:text-primary transition-colors">Scan History</Link>
+            <Link href="/reports" className="text-muted-foreground hover:text-primary transition-colors">Reports</Link>
+            <Link href="/monitoring" className="text-muted-foreground hover:text-primary transition-colors">Monitoring</Link>
+            <div className="flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 text-green-500 animate-pulse" />
+              <span className="text-xs text-muted-foreground">Online</span>
+            </div>
+          </nav>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-8">
-        <div className="flex items-center justify-between mb-12">
-          <div>
+      <main className="w-full px-6 py-8">
+        {/* Hero */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground">Threat Intelligence Dashboard</h1>
+          <p className="mt-1 text-muted-foreground">Unified security analysis, reconnaissance, and threat detection platform.</p>
+        </div>
 
-            <p className="text-muted-foreground">Advanced Threat Detection System</p>
+        {/* KPI Cards */}
+        <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="rounded-lg border border-primary/20 bg-card/50 p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs"><BarChart3 className="h-4 w-4" /> Total Scans</div>
+            <div className="mt-2 text-3xl font-bold text-primary">{stats?.scans?.total_scans ?? 0}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card/50 p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs"><Database className="h-4 w-4" /> Unique Targets</div>
+            <div className="mt-2 text-3xl font-bold text-foreground">{stats?.scans?.top_targets?.length ?? 0}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card/50 p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs"><TrendingUp className="h-4 w-4" /> IOC Count</div>
+            <div className="mt-2 text-3xl font-bold text-yellow-500">{stats?.iocs?.total ?? 0}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-card/50 p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs"><Clock className="h-4 w-4" /> Today&apos;s Scans</div>
+            <div className="mt-2 text-3xl font-bold text-foreground">{stats?.scans?.today ?? 0}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <Card className="p-6 border-primary/20 bg-card/50 backdrop-blur-sm">
-            <div className="flex items-center space-x-2 mb-4">
-              <Eye className="w-5 h-5 text-primary" />
-              <h3 className="text-lg font-semibold">Security Status</h3>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Threat Level</span>
-                <Badge variant="secondary" className="bg-green-500/20 text-green-500">
-                  Low
-                </Badge>
+        {/* Quick Links */}
+        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            { href: "/threat-intel", icon: Database, label: "Threat Intel", desc: "IOCs & Feeds" },
+            { href: "/cve", icon: Bug, label: "CVE Lookup", desc: "NVD Database" },
+            { href: "/history", icon: Clock, label: "Scan History", desc: "Past Results" },
+            { href: "/reports", icon: FileText, label: "Reports", desc: "Generate Reports" },
+          ].map((link) => (
+            <Link key={link.href} href={link.href} className="group flex items-center gap-3 rounded-lg border border-border bg-card/30 p-3 transition-all hover:border-primary/40 hover:bg-primary/5">
+              <link.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              <div>
+                <div className="text-sm font-medium text-foreground">{link.label}</div>
+                <div className="text-xs text-muted-foreground">{link.desc}</div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Active Scans</span>
-                <span className="text-sm">{loading ? "1" : "0"}</span>
-              </div>
-            </div>
-          </Card>
+              <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+            </Link>
+          ))}
         </div>
 
-        <Card className="p-6 border-primary/20 bg-card/50 backdrop-blur-sm mb-8">
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold">Threat Map Live</h2>
-              <p className="text-sm text-muted-foreground">
-                Real-time visualization of global cyber threats (Source: Radware)
-              </p>
-            </div>
-            <Separator />
-            <div className="relative w-full h-[400px] rounded-md overflow-hidden">
-              <iframe
-                src="https://livethreatmap.radware.com"
-                className="w-full h-full border-none"
-                title="Radware Live Threat Map"
-                allowFullScreen
-              />
+        {/* Threat Map */}
+        <div className="mb-8 rounded-lg border border-primary/20 bg-card/50 p-6 backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Live Threat Map</h2>
+              <p className="text-xs text-muted-foreground">Real-time global cyber threat visualization (Radware)</p>
             </div>
           </div>
-        </Card>
-
-        <Card className="border-primary/20 bg-card/50 backdrop-blur-sm mb-8">
-          <Tabs defaultValue="integrated" className="p-6">
-            <TabsList className="grid w-full grid-cols-5 lg:w-[600px] mb-6">
-              <TabsTrigger value="integrated" className="data-[state=active]:bg-primary/20 text-xs">
-                <Eye className="w-3 h-3 mr-1" />
-                Domain Recon
-              </TabsTrigger>
-              <TabsTrigger value="ip" className="data-[state=active]:bg-primary/20 text-xs">
-                <Network className="w-3 h-3 mr-1" />
-                IP
-              </TabsTrigger>
-              <TabsTrigger value="network" className="data-[state=active]:bg-primary/20 text-xs">
-                <BarChart4 className="w-3 h-3 mr-1" />
-                Network
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="data-[state=active]:bg-primary/20 text-xs">
-                <Shield className="w-3 h-3 mr-1" />
-                Advanced
-              </TabsTrigger>
-              <TabsTrigger value="security" className="data-[state=active]:bg-primary/20 text-xs">
-                <Activity className="w-3 h-3 mr-1" />
-                Security
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="integrated" className="space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Domain Reconnaissance & URL Scanner</h2>
-                <p className="text-sm text-muted-foreground">
-                  Comprehensive analysis combining domain reconnaissance and URL threat detection in one scan
-                </p>
-              </div>
-              <Separator />
-              <form onSubmit={runIntegratedScan} className="space-y-4">
-                <div className="flex space-x-2">
-                  <Input
-                    type="text"
-                    placeholder="Enter domain (e.g., example.com) or URL (e.g., https://example.com)"
-                    value={integratedInput}
-                    onChange={(e) => {
-                      let value = e.target.value;
-                      // Auto-add https:// if user starts with 'h'
-                      if (value.startsWith('h') && !value.startsWith('http')) {
-                        value = 'https://' + value.substring(1);
-                      }
-                      // Auto-add https:// if user enters just a domain without protocol
-                      else if (value && !value.includes('://') && !value.startsWith('http')) {
-                        if (value.includes('.') && !value.startsWith('www.')) {
-                          value = 'https://' + value;
-                        }
-                      }
-                      setIntegratedInput(value);
-                    }}
-                    onBlur={(e) => {
-                      let value = e.target.value;
-                      // Auto-add https:// if user enters just a domain without protocol
-                      if (value && !value.includes('://') && !value.startsWith('http')) {
-                        if (value.includes('.') && !value.startsWith('www.')) {
-                          value = 'https://' + value;
-                          setIntegratedInput(value);
-                        }
-                      }
-                    }}
-                    required
-                    className="bg-background/50"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={integratedLoading}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    {integratedLoading ? "Running Scan..." : "Run Scan"}
-                  </Button>
-                  {integratedResults && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIntegratedResults(null);
-                        setIntegratedInput("");
-                        setIsCached(false);
-                      }}
-                      className="border-destructive/20 text-destructive hover:bg-destructive/10"
-                    >
-                      Clear Results
-                    </Button>
-                  )}
-                </div>
-                {integratedLoading && (
-                  <div className="text-center py-4">
-                    <div className="inline-flex items-center space-x-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                      <span className="text-sm text-muted-foreground">Running comprehensive security analysis...</span>
-                    </div>
-                  </div>
-                )}
-                {integratedResults && (
-                  <div className="space-y-6">
-                    {/* Scan Summary Header */}
-                    <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <h3 className="text-lg font-semibold text-primary">Scan Summary</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Input: <span className="font-mono text-primary">{integratedInput}</span>
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {isCached ? "Showing cached results" : "Fresh scan completed"}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-primary">
-                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "⚠️" : "✅"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "High Risk" : "Low Risk"}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* URL Analysis Results */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-primary">URL Threat Analysis</h3>
-                        {integratedResults.urlResults?.timestamp && (
-                          <span className="text-xs text-muted-foreground">
-                            Scanned: {new Date(integratedResults.urlResults.timestamp).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <Alert className="bg-primary/10 border-primary/20">
-                        <AlertDescription>
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                {isCached && (
-                                  <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 text-xs">
-                                    Cached Results
-                                  </Badge>
-                                )}
-                                <span className="text-sm text-muted-foreground">View:</span>
-                                <Button
-                                  variant={integratedViewMode === 'normal' ? 'default' : 'outline'}
-                                  size="sm"
-                                  onClick={() => setIntegratedViewMode('normal')}
-                                  className="h-7 px-2 text-xs"
-                                >
-                                  Normal
-                                </Button>
-                                <Button
-                                  variant={integratedViewMode === 'json' ? 'default' : 'outline'}
-                                  size="sm"
-                                  onClick={() => setIntegratedViewMode('json')}
-                                  className="h-7 px-2 text-xs"
-                                >
-                                  JSON
-                                </Button>
-                              </div>
-                            </div>
-                            {integratedViewMode === 'json' ? (
-                              <div className="bg-slate-900 rounded-md p-4 overflow-auto">
-                                <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
-                                  {JSON.stringify(integratedResults.urlResults, null, 2)}
-                                </pre>
-                              </div>
-                            ) : (
-                              formatResults(integratedResults.urlResults, 'normal')
-                            )}
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-
-                    {/* Domain Analysis Results */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-primary">Domain Reconnaissance</h3>
-                        {integratedResults.domainResults?.timestamp && (
-                          <span className="text-xs text-muted-foreground">
-                            Scanned: {new Date(integratedResults.domainResults.timestamp).toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <Alert className="bg-primary/10 border-primary/20">
-                        <AlertDescription>
-                          <div className="space-y-4">
-                            {integratedViewMode === 'json' ? (
-                              <div className="bg-slate-900 rounded-md p-4 overflow-auto">
-                                <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
-                                  {JSON.stringify(integratedResults.domainResults, null, 2)}
-                                </pre>
-                              </div>
-                            ) : (
-                              formatResults(integratedResults.domainResults, 'normal')
-                            )}
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-
-                    {/* Combined Summary */}
-                    <div className="space-y-3">
-                      <h3 className="text-lg font-semibold text-primary">Combined Security Assessment</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Overall Risk Level */}
-                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
-                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Overall Risk Level</h4>
-                          <div className="text-2xl font-bold text-center">
-                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ||
-                              integratedResults.domainResults?.status === "error" ? (
-                              <span className="text-red-500">HIGH</span>
-                            ) : (
-                              <span className="text-green-500">LOW</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* SSL Status */}
-                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
-                          <h4 className="font-medium text-sm text-muted-foreground mb-2">SSL Certificate</h4>
-                          <div className="text-2xl font-bold text-center">
-                            {integratedResults.urlResults?.data?.additional_checks?.ssl_security?.valid ? (
-                              <span className="text-green-500">VALID</span>
-                            ) : (
-                              <span className="text-red-500">INVALID</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Domain Age */}
-                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
-                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Domain Age</h4>
-                          <div className="text-2xl font-bold text-center">
-                            {integratedResults.domainResults?.domain_info?.whois?.creation_date ? (
-                              <span className="text-blue-500">
-                                {Math.floor((Date.now() - new Date(integratedResults.domainResults.domain_info.whois.creation_date).getTime()) / (1000 * 60 * 60 * 24 * 365))}y
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">N/A</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Subdomain Count */}
-                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
-                          <h4 className="font-medium text-sm text-muted-foreground mb-2">Subdomains</h4>
-                          <div className="text-2xl font-bold text-center">
-                            {integratedResults.domainResults?.domain_info?.subdomains ? (
-                              <span className="text-purple-500">
-                                {integratedResults.domainResults.domain_info.subdomains.length}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">0</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Additional Security Insights */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        {/* Security Features */}
-                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
-                          <h4 className="font-medium text-sm text-muted-foreground mb-3">Security Features</h4>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">DNSSEC:</span>
-                              <Badge variant={integratedResults.domainResults?.domain_info?.security_features?.dnssec ? "default" : "secondary"} className="text-xs">
-                                {integratedResults.domainResults?.domain_info?.security_features?.dnssec ? "Enabled" : "Disabled"}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">DMARC:</span>
-                              <Badge variant={integratedResults.domainResults?.domain_info?.security_features?.dmarc ? "default" : "secondary"} className="text-xs">
-                                {integratedResults.domainResults?.domain_info?.security_features?.dmarc ? "Present" : "Missing"}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">SPF:</span>
-                              <Badge variant={integratedResults.domainResults?.domain_info?.security_features?.spf ? "default" : "secondary"} className="text-xs">
-                                {integratedResults.domainResults?.domain_info?.security_features?.spf ? "Present" : "Missing"}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Threat Indicators */}
-                        <div className="bg-card/50 border border-border/20 rounded-lg p-4">
-                          <h4 className="font-medium text-sm text-muted-foreground mb-3">Threat Indicators</h4>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">Malicious URL:</span>
-                              <Badge variant={integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "destructive" : "default"} className="text-xs">
-                                {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ? "Yes" : "No"}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">Suspicious Patterns:</span>
-                              <Badge variant={integratedResults.urlResults?.data?.additional_checks?.suspicious_patterns?.found ? "destructive" : "default"} className="text-xs">
-                                {integratedResults.urlResults?.data?.additional_checks?.suspicious_patterns?.found ? "Found" : "None"}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">Security Score:</span>
-                              <Badge variant="outline" className="text-xs">
-                                {integratedResults.urlResults?.data?.virustotal?.risk_assessment ?
-                                  `${integratedResults.urlResults.data.virustotal.risk_assessment.malicious_count || 0} / ${integratedResults.urlResults.data.virustotal.risk_assessment.total_engines || 0}` :
-                                  integratedResults.urlResults?.data?.virustotal?.data?.attributes?.stats ?
-                                    `${integratedResults.urlResults.data.virustotal.data.attributes.stats.malicious || 0} / ${integratedResults.urlResults.data.virustotal.data.attributes.stats.total || 0}` :
-                                    '0 / 0'
-                                }
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </form>
-            </TabsContent>
-
-            <TabsContent value="ip" className="space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">IP Reputation Scanner</h2>
-                <p className="text-sm text-muted-foreground">
-                  Check IP addresses for malicious activity with comprehensive security analysis
-                </p>
-              </div>
-              <Separator />
-              <form onSubmit={checkIp} className="space-y-4">
-                <div className="flex space-x-2">
-                  <Input
-                    type="text"
-                    placeholder="Enter IP address"
-                    value={ip}
-                    onChange={(e) => setIp(e.target.value)}
-                    required
-                    pattern="^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-                    className="bg-background/50"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    {loading ? "Scanning..." : "Scan IP"}
-                  </Button>
-                </div>
-
-                {/* Enhanced Loading State for IP Scanner */}
-                {loading && (
-                  <div className="text-center py-4">
-                    <div className="inline-flex items-center space-x-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                      <span className="text-sm text-muted-foreground">Analyzing IP address and running security checks...</span>
-                    </div>
-                  </div>
-                )}
-
-                {ipResults && (
-                  <Alert
-                    className={`bg-${ipResults.status === "error" ? "destructive" : "primary"
-                      }/10 border-${ipResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(ipResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={ipViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setIpViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={ipViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setIpViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(ipResults, ipViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </form>
-            </TabsContent>
-
-            <TabsContent value="network" className="space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Network Log Analysis</h2>
-                <p className="text-sm text-muted-foreground">
-                  Upload PCAP files for comprehensive network traffic analysis with enhanced security scanning
-                </p>
-              </div>
-              <Separator />
-              <form onSubmit={analyzeNetworkLog} className="space-y-4">
-                <div className="border-2 border-dashed border-border/50 rounded-lg p-8 text-center bg-background/30">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept=".pcap,.cap,.pcapng"
-                    className="hidden"
-                  />
-                  <div className="space-y-4">
-                    <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <FileUp className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-medium">Upload PCAP File</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Drag and drop your PCAP file here, or click to browse
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Files will be analyzed for protocols, traffic patterns, and scanned for security threats
-                      </p>
-                    </div>
-                    {selectedFile ? (
-                      <div className="bg-primary/5 p-3 rounded-md inline-flex items-center space-x-2">
-                        <FileText className="w-4 h-4 text-primary" />
-                        <span className="text-sm font-medium">{selectedFile.name}</span>
-                        <Badge variant="outline" className="bg-primary/10 text-xs">
-                          {(selectedFile.size / 1024).toFixed(1)} KB
-                        </Badge>
-                      </div>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleFileUploadClick}
-                      className="bg-secondary/50"
-                    >
-                      Select File
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="submit"
-                    disabled={loading || !selectedFile}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    {loading ? "Analyzing..." : "Analyze Network Log"}
-                  </Button>
-                </div>
-
-                {/* Enhanced Loading State */}
-                {loading && (
-                  <div className="text-center py-6">
-                    <div className="inline-flex items-center space-x-3">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">Analyzing PCAP file...</p>
-                        <p className="text-xs text-muted-foreground">
-                          This may take a few minutes for large files
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {logResults && (
-                  <Alert
-                    className={`bg-${logResults.status === "error" ? "destructive" : "primary"
-                      }/10 border-${logResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-2">
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(logResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                            <p
-                              className={`text-${logResults.status === "error" ? "destructive" : "primary"
-                                }`}
-                            >
-                              {logResults.message || `Analysis completed for ${selectedFile?.name}`}
-                            </p>
-                          </div>
-                          {logResults.data && (
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm text-muted-foreground">View:</span>
-                              <Button
-                                variant={logViewMode === 'normal' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setLogViewMode('normal')}
-                                className="h-7 px-2 text-xs"
-                              >
-                                Normal
-                              </Button>
-                              <Button
-                                variant={logViewMode === 'json' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setLogViewMode('json')}
-                                className="h-7 px-2 text-xs"
-                              >
-                                JSON
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                        {logResults.data && <div className="mt-4">{formatResults(logResults, logViewMode)}</div>}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </form>
-            </TabsContent>
-
-            <TabsContent value="advanced" className="space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Advanced Security Scanners</h2>
-                <p className="text-sm text-muted-foreground">
-                  Port scanning and vulnerability assessment
-                </p>
-              </div>
-              <Separator />
-
-              {/* Port Scanner Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Port Scanner</h3>
-                <form onSubmit={scanPorts} className="space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="text"
-                      placeholder="Enter IP address or hostname"
-                      value={portTarget}
-                      onChange={(e) => setPortTarget(e.target.value)}
-                      className="bg-background/50"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={portLoading}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      {portLoading ? "Scanning..." : "Scan Ports"}
-                    </Button>
-                  </div>
-                </form>
-                {portResults && (
-                  <Alert
-                    className={`bg-${portResults.status === "error" ? "destructive" : "primary"
-                      }/10 border-${portResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(portResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={portViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setPortViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={portViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setPortViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(portResults, portViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Vulnerability Scanner Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Vulnerability Scanner</h3>
-                <form onSubmit={scanVulnerabilities} className="space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="text"
-                      placeholder="Enter target for CVE scanning"
-                      value={vulnTarget}
-                      onChange={(e) => setVulnTarget(e.target.value)}
-                      className="bg-background/50"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={vulnLoading}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      {vulnLoading ? "Scanning..." : "Scan CVEs"}
-                    </Button>
-                  </div>
-                </form>
-                {vulnResults && (
-                  <Alert
-                    className={`bg-${vulnResults.status === "error" ? "destructive" : "primary"
-                      }/10 border-${vulnResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(vulnResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={vulnViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setVulnViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={vulnViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setVulnViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(vulnResults, vulnViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-            </TabsContent>
-
-            <TabsContent value="security" className="space-y-6">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold">Security Headers & Email Analysis</h2>
-                <p className="text-sm text-muted-foreground">
-                  Security headers analysis and email security assessment
-                </p>
-              </div>
-              <Separator />
-
-              {/* Security Headers Scanner */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Security Headers Scanner</h3>
-                <form onSubmit={scanSecurityHeaders} className="space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="url"
-                      placeholder="Enter website URL"
-                      value={headerUrl}
-                      onChange={(e) => setHeaderUrl(e.target.value)}
-                      className="bg-background/50"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={headerLoading}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      {headerLoading ? "Scanning..." : "Scan Headers"}
-                    </Button>
-                  </div>
-                </form>
-                {headerResults && (
-                  <Alert
-                    className={`bg-${headerResults.status === "error" ? "destructive" : "primary"
-                      }/10 border-${headerResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(headerResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={headerViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setHeaderViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={headerViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setHeaderViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(headerResults, headerViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Email Security Scanner */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Email Security Analysis</h3>
-                <form onSubmit={analyzeEmailSecurity} className="space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="text"
-                      placeholder="Enter domain for email security scan"
-                      value={emailDomain}
-                      onChange={(e) => setEmailDomain(e.target.value)}
-                      className="bg-background/50"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={emailLoading}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      {emailLoading ? "Analyzing..." : "Analyze Email Security"}
-                    </Button>
-                  </div>
-                </form>
-                {emailResults && (
-                  <Alert
-                    className={`bg-${emailResults.status === "error" ? "destructive" : "primary"
-                      }/10 border-${emailResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(emailResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={emailViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setEmailViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={emailViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setEmailViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(emailResults, emailViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </Card>
-
-        <Card className="border-primary/20 bg-card/50 backdrop-blur-sm p-6">
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold flex items-center">
-                <MessageSquare className="w-6 h-6 text-primary mr-2" />
-                CyberRegis Assistant
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Ask questions about cyber threats, scan results, or security best practices
-              </p>
-            </div>
-            <Separator />
-            <ScrollArea className="h-[300px] w-full rounded-md bg-background/30 p-4" ref={chatScrollRef}>
-              {chatMessages.length === 0 ? (
-                <div className="text-center text-muted-foreground text-sm">
-                  Start a conversation with the CyberRegis Assistant
-                </div>
-              ) : (
-                chatMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`mb-4 flex ${message.isUser ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[70%] rounded-lg p-3 ${message.isUser
-                        ? "bg-primary/20 text-primary-foreground"
-                        : "bg-secondary/50 text-foreground"
-                        }`}
-                    >
-                      {message.isUser ? (
-                        <p className="text-sm">{message.text}</p>
-                      ) : (
-                        <div className="text-sm prose prose-invert max-w-none">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              h1: ({ node, ...props }) => <h1 className="text-lg font-semibold mt-2 mb-1" {...props} />,
-                              h2: ({ node, ...props }) => <h2 className="text-base font-medium mt-2 mb-1" {...props} />,
-                              h3: ({ node, ...props }) => <h3 className="text-sm font-medium mt-2 mb-1" {...props} />,
-                              p: ({ node, ...props }) => <p className="mb-2" {...props} />,
-                              ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2" {...props} />,
-                              ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2" {...props} />,
-                              li: ({ node, ...props }) => <li className="mb-1" {...props} />,
-                              strong: ({ node, ...props }) => <strong className="font-medium" {...props} />,
-                            }}
-                          >
-                            {message.text}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-                      <span className="text-xs text-muted-foreground mt-1 block">
-                        {message.timestamp}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </ScrollArea>
-            <form onSubmit={handleChatSubmit} className="flex space-x-2">
-              <Input
-                type="text"
-                placeholder="Ask a question..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                className="bg-background/50"
-              />
-              <Button
-                type="submit"
-                disabled={loading || !chatInput.trim()}
-                className="bg-primary hover:bg-primary/90"
-              >
-                {loading ? "Processing..." : "Send"}
-              </Button>
-            </form>
+          <div className="relative w-full h-[350px] rounded-md overflow-hidden border border-border">
+            <iframe src="https://livethreatmap.radware.com" className="w-full h-full border-none" title="Radware Live Threat Map" />
           </div>
-        </Card>
+        </div>
 
-        {/* File Content Modal */}
-        <Dialog open={fileModalOpen} onOpenChange={setFileModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[80vh]">
-            <DialogHeader>
-              <DialogTitle className="flex items-center justify-between">
-                <span>
-                  {fileContent?.file_type === 'robots' ? 'robots.txt' : 'security.txt'} - {fileContent?.domain}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileContent?.url && window.open(fileContent.url, '_blank')}
-                    className="h-7 px-2 text-xs"
-                  >
-                    <ExternalLink className="w-3 h-3 mr-1" />
-                    Open Original
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setFileModalOpen(false)}
-                    className="h-7 w-7 p-0"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </DialogTitle>
-            </DialogHeader>
+        {/* ── Scan Panel ── */}
+        <div className="rounded-lg border border-primary/20 bg-card/50 backdrop-blur-sm">
+          {/* Tab bar */}
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-4 pt-4">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-t-lg px-4 py-2 text-xs font-medium transition-colors ${activeTab === id ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-2 pb-1">
+              <button onClick={() => setJsonView(!jsonView)} className={`rounded px-2 py-1 text-[10px] font-mono ${jsonView ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                {jsonView ? "JSON" : "UI"}
+              </button>
+            </div>
+          </div>
 
-            {fileContent && (
-              <div className="space-y-4">
-                {/* File Info */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium text-muted-foreground">URL:</span>
-                    <p className="font-mono text-xs break-all">{fileContent.url}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-muted-foreground">Size:</span>
-                    <p>{fileContent.content_length} bytes</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-muted-foreground">Content Type:</span>
-                    <p>{fileContent.content_type}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-muted-foreground">Last Modified:</span>
-                    <p className="text-xs">{fileContent.last_modified}</p>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* File Content */}
+          <div className="p-6">
+            {/* ─── Domain Recon ─── */}
+            {activeTab === "domain" && (
+              <div className="space-y-6">
                 <div>
-                  <h4 className="font-medium mb-2">File Content:</h4>
-                  <ScrollArea className="h-96 w-full border rounded-md">
-                    <pre className="p-4 text-sm font-mono whitespace-pre-wrap bg-muted/20">
-                      {fileContent.content}
-                    </pre>
-                  </ScrollArea>
+                  <h2 className="text-xl font-semibold text-foreground">Domain Reconnaissance & URL Scanner</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Combined domain WHOIS, DNS, SSL, security features, and URL threat analysis.</p>
                 </div>
+                <form onSubmit={runDomainScan} className="flex gap-2">
+                  <input value={domainInput} onChange={(e) => setDomainInput(e.target.value)} placeholder="example.com or https://example.com" required
+                    className="flex-1 rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground" />
+                  <button type="submit" disabled={domainLoading} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                    {domainLoading ? "Scanning..." : "Scan"}
+                  </button>
+                  {(domainResults || urlResults) && <button type="button" onClick={() => { setDomainResults(null); setUrlResults(null); setDomainInput(""); }} className="rounded-lg border border-red-500/30 px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10">Clear</button>}
+                </form>
+                {domainLoading && <ScanProgress text="Running comprehensive domain analysis..." />}
+                {jsonView && (domainResults || urlResults) && <JsonBlock data={{ domainResults, urlResults }} />}
+                {!jsonView && domainResults && <DomainResultsView data={domainResults} urlData={urlResults} fetchFile={fetchFileContent} />}
               </div>
             )}
-          </DialogContent>
-        </Dialog>
+
+            {/* ─── IP Intel ─── */}
+            {activeTab === "ip" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">IP Intelligence</h2>
+                  <p className="text-sm text-muted-foreground mt-1">AbuseIPDB reputation, geolocation, VirusTotal analysis, and risk assessment.</p>
+                </div>
+                <form onSubmit={runIpScan} className="flex gap-2">
+                  <input value={ipInput} onChange={(e) => setIpInput(e.target.value)} placeholder="8.8.8.8" required
+                    className="flex-1 rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground" />
+                  <button type="submit" disabled={ipLoading} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {ipLoading ? "Scanning..." : "Check IP"}
+                  </button>
+                  {ipResults && <button type="button" onClick={() => { setIpResults(null); setIpInput(""); }} className="rounded-lg border border-red-500/30 px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10">Clear</button>}
+                </form>
+                {ipLoading && <ScanProgress text="Querying IP intelligence databases..." />}
+                {jsonView && ipResults && <JsonBlock data={ipResults} />}
+                {!jsonView && ipResults && <IpResultsView data={ipResults} />}
+              </div>
+            )}
+
+            {/* ─── PCAP ─── */}
+            {activeTab === "pcap" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Network Packet Analysis</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Upload PCAP files for protocol distribution, VirusTotal scanning, and threat detection.</p>
+                </div>
+                <form onSubmit={runPcapScan} className="flex items-center gap-2">
+                  <input ref={fileRef} type="file" accept=".pcap,.pcapng" onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)} className="hidden" />
+                  <button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground">
+                    <Upload className="h-4 w-4" /> {selectedFile ? selectedFile.name : "Choose PCAP file"}
+                  </button>
+                  <button type="submit" disabled={pcapLoading || !selectedFile} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {pcapLoading ? "Analyzing..." : "Analyze"}
+                  </button>
+                </form>
+                {pcapLoading && <ScanProgress text="Processing network capture..." />}
+                {jsonView && pcapResults && <JsonBlock data={pcapResults} />}
+                {!jsonView && pcapResults && <PcapResultsView data={pcapResults} />}
+              </div>
+            )}
+
+            {/* ─── Port Scan ─── */}
+            {activeTab === "ports" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Port Scanner</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Scan open ports, identify services, and detect potential vulnerabilities.</p>
+                </div>
+                <form onSubmit={runPortScan} className="flex gap-2">
+                  <input value={portTarget} onChange={(e) => setPortTarget(e.target.value)} placeholder="Target IP or domain" required
+                    className="flex-1 rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground" />
+                  <button type="submit" disabled={portLoading} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {portLoading ? "Scanning..." : "Scan Ports"}
+                  </button>
+                </form>
+                {portLoading && <ScanProgress text="Scanning ports (this may take a moment)..." />}
+                {jsonView && portResults && <JsonBlock data={portResults} />}
+                {!jsonView && portResults && <PortResultsView data={portResults} />}
+              </div>
+            )}
+
+            {/* ─── Vuln Scan ─── */}
+            {activeTab === "vuln" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Vulnerability Scanner</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Identify known vulnerabilities in running services with risk assessment.</p>
+                </div>
+                <form onSubmit={runVulnScan} className="flex gap-2">
+                  <input value={vulnTarget} onChange={(e) => setVulnTarget(e.target.value)} placeholder="Target IP or domain" required
+                    className="flex-1 rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground" />
+                  <button type="submit" disabled={vulnLoading} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {vulnLoading ? "Scanning..." : "Run Vuln Scan"}
+                  </button>
+                </form>
+                {vulnLoading && <ScanProgress text="Running vulnerability assessment..." />}
+                {jsonView && vulnResults && <JsonBlock data={vulnResults} />}
+                {!jsonView && vulnResults && <VulnResultsView data={vulnResults} />}
+              </div>
+            )}
+
+            {/* ─── Security Headers ─── */}
+            {activeTab === "headers" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Security Headers Analysis</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Evaluate HTTP security headers (CSP, HSTS, X-Frame-Options, etc.).</p>
+                </div>
+                <form onSubmit={runHeaderScan} className="flex gap-2">
+                  <input value={headerUrl} onChange={(e) => setHeaderUrl(e.target.value)} placeholder="https://example.com" required
+                    className="flex-1 rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground" />
+                  <button type="submit" disabled={headerLoading} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {headerLoading ? "Analyzing..." : "Analyze Headers"}
+                  </button>
+                </form>
+                {headerLoading && <ScanProgress text="Checking HTTP security headers..." />}
+                {jsonView && headerResults && <JsonBlock data={headerResults} />}
+                {!jsonView && headerResults && <HeaderResultsView data={headerResults} />}
+              </div>
+            )}
+
+            {/* ─── Email Security ─── */}
+            {activeTab === "email" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Email Security</h2>
+                  <p className="text-sm text-muted-foreground mt-1">SPF, DMARC, and DKIM configuration analysis for email authentication.</p>
+                </div>
+                <form onSubmit={runEmailScan} className="flex gap-2">
+                  <input value={emailDomain} onChange={(e) => setEmailDomain(e.target.value)} placeholder="example.com" required
+                    className="flex-1 rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground" />
+                  <button type="submit" disabled={emailLoading} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    {emailLoading ? "Analyzing..." : "Check Email Security"}
+                  </button>
+                </form>
+                {emailLoading && <ScanProgress text="Checking email security records..." />}
+                {jsonView && emailResults && <JsonBlock data={emailResults} />}
+                {!jsonView && emailResults && <EmailResultsView data={emailResults} />}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Inline Scan History ── */}
+        <div className="mt-8 rounded-lg border border-border bg-card/50 backdrop-blur-sm">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Recent Scan History</h2>
+              <span className="text-xs text-muted-foreground">({historyTotal} total)</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => loadInlineHistory(historyPage)} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <RefreshCw className="h-3.5 w-3.5" /> Refresh
+              </button>
+              <Link href="/history" className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors">
+                View All <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-card/80 border-b border-border">
+                <tr>
+                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">Target</th>
+                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">Type</th>
+                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">Risk Score</th>
+                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">Status</th>
+                  <th className="px-6 py-3 text-left font-medium text-muted-foreground">Timestamp</th>
+                  <th className="px-6 py-3 text-right font-medium text-muted-foreground">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {historyLoading && (
+                  <tr><td colSpan={6} className="px-6 py-10 text-center text-muted-foreground text-sm">Loading...</td></tr>
+                )}
+                {!historyLoading && historyScans.length === 0 && (
+                  <tr><td colSpan={6} className="px-6 py-10 text-center text-muted-foreground text-sm">No scans yet. Run a scan above to see results here.</td></tr>
+                )}
+                {historyScans.map((scan) => {
+                  const SCAN_TYPE_COLORS: Record<string, string> = {
+                    domain: "text-blue-400 bg-blue-400/10 border-blue-400/30",
+                    ip: "text-purple-400 bg-purple-400/10 border-purple-400/30",
+                    url: "text-green-400 bg-green-400/10 border-green-400/30",
+                    port_scan: "text-orange-400 bg-orange-400/10 border-orange-400/30",
+                    vuln_scan: "text-red-400 bg-red-400/10 border-red-400/30",
+                    pcap: "text-cyan-400 bg-cyan-400/10 border-cyan-400/30",
+                    ssl: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",
+                    headers: "text-pink-400 bg-pink-400/10 border-pink-400/30",
+                    email: "text-indigo-400 bg-indigo-400/10 border-indigo-400/30",
+                  };
+                  const typeColor = SCAN_TYPE_COLORS[scan.scan_type] || SCAN_TYPE_COLORS.domain;
+                  const scoreNum = scan.risk_score;
+                  const riskCls = !scoreNum ? "text-gray-400 bg-gray-400/10 border-gray-400/30"
+                    : scoreNum >= 80 ? "text-red-500 bg-red-500/10 border-red-500/30"
+                    : scoreNum >= 60 ? "text-orange-500 bg-orange-500/10 border-orange-500/30"
+                    : scoreNum >= 40 ? "text-yellow-500 bg-yellow-500/10 border-yellow-500/30"
+                    : "text-green-400 bg-green-400/10 border-green-400/30";
+                  const riskText = !scoreNum ? "N/A" : scoreNum >= 80 ? `${scoreNum} Critical` : scoreNum >= 60 ? `${scoreNum} High` : scoreNum >= 40 ? `${scoreNum} Medium` : `${scoreNum} Low`;
+                  return (
+                    <tr key={scan.id} className="hover:bg-card/50 transition-colors">
+                      <td className="px-6 py-3 font-mono text-foreground text-sm">{scan.target}</td>
+                      <td className="px-6 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${typeColor}`}>
+                          {scan.scan_type.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold border ${riskCls}`}>{riskText}</span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <span className={`text-xs ${
+                          scan.status === "completed" ? "text-green-400" :
+                          scan.status === "error" ? "text-red-400" : "text-yellow-400"
+                        }`}>{scan.status}</span>
+                      </td>
+                      <td className="px-6 py-3 text-xs text-muted-foreground">{new Date(scan.created_at || scan.timestamp || "").toLocaleString()}</td>
+                      <td className="px-6 py-3 text-right">
+                        <button onClick={() => setHistorySelected(historySelected?.id === scan.id ? null : scan)}
+                          className="text-primary/70 hover:text-primary transition-colors">
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between border-t border-border px-6 py-3">
+            <span className="text-xs text-muted-foreground">Page {historyPage} of {Math.ceil(historyTotal / HISTORY_PER_PAGE) || 1}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={historyPage === 1}
+                className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors">
+                <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              </button>
+              <button onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyTotal / HISTORY_PER_PAGE) || 1, p + 1))}
+                disabled={historyPage >= (Math.ceil(historyTotal / HISTORY_PER_PAGE) || 1)}
+                className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors">
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Detail Drawer */}
+          {historySelected && (
+            <div className="border-t border-primary/20 bg-card/30 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-foreground">Scan Details — {historySelected.target}</h3>
+                <button onClick={() => setHistorySelected(null)} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Close</button>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div><span className="text-xs text-muted-foreground block">Scan Type</span><span className="text-sm text-foreground">{historySelected.scan_type}</span></div>
+                <div><span className="text-xs text-muted-foreground block">Status</span><span className="text-sm text-foreground">{historySelected.status}</span></div>
+                <div><span className="text-xs text-muted-foreground block">Risk Score</span><span className="text-sm text-foreground">{historySelected.risk_score || "N/A"}</span></div>
+                <div><span className="text-xs text-muted-foreground block">Duration</span><span className="text-sm text-foreground">{historySelected.scan_duration_ms ? `${historySelected.scan_duration_ms}ms` : "N/A"}</span></div>
+              </div>
+              {historySelected.result_summary != null && (
+                <div>
+                  <span className="text-xs text-muted-foreground block mb-1">Result Summary</span>
+                  <pre className="rounded-lg bg-background border border-border p-4 text-xs text-muted-foreground overflow-auto max-h-80 font-mono">
+                    {typeof historySelected.result_summary === "string" ? historySelected.result_summary : JSON.stringify(historySelected.result_summary as Record<string, unknown>, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Chat FAB */}
+      <button onClick={() => setChatOpen(!chatOpen)} className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 transition-colors">
+        {chatOpen ? <X className="h-6 w-6" /> : <MessageSquare className="h-6 w-6" />}
+      </button>
+
+      {/* Chat Panel */}
+      {chatOpen && (
+        <div className="fixed bottom-24 right-6 z-50 w-96 rounded-lg border border-primary/20 bg-card shadow-2xl shadow-primary/10 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">CyberRegis AI</span>
+            </div>
+            <button onClick={() => setChatOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+          </div>
+          <div ref={chatRef} className="h-80 overflow-y-auto p-4 space-y-3">
+            {chatMessages.map((m, i) => (
+              <div key={`chat-${i}-${m.text.substring(0, 20)}`} className={`flex ${m.isUser ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${m.isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
+                  {m.isUser ? m.text : <div className="prose prose-sm prose-invert max-w-none [&>p]:m-0"><ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown></div>}
+                  {m.ts && <div className="mt-1 text-[10px] opacity-60">{m.ts}</div>}
+                </div>
+              </div>
+            ))}
+            {chatLoading && <div className="flex justify-start"><div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground animate-pulse">Thinking...</div></div>}
+          </div>
+          <form onSubmit={sendChat} className="border-t border-border p-3 flex gap-2">
+            <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask about cybersecurity..." className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" />
+            <button type="submit" disabled={chatLoading} className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"><Zap className="h-4 w-4" /></button>
+          </form>
+        </div>
+      )}
+
+      {/* File Content Modal */}
+      {fileModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setFileModal(null)}>
+          <div className="mx-4 max-h-[80vh] w-full max-w-2xl rounded-lg border border-primary/20 bg-card overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <span className="text-sm font-semibold text-foreground">{fileModal.title}</span>
+              <button onClick={() => setFileModal(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <pre className="overflow-auto p-4 text-xs font-mono text-muted-foreground max-h-[60vh]">{fileModal.content}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────── */
+/*             SUB-COMPONENTS                 */
+/* ────────────────────────────────────────── */
+
+function ScanProgress({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <span className="text-sm text-muted-foreground">{text}</span>
+    </div>
+  );
+}
+
+function JsonBlock({ data }: { data: any }) {
+  return (
+    <div className="rounded-lg border border-border bg-background overflow-auto max-h-[600px]">
+      <pre className="p-4 text-xs font-mono text-green-400 whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
+    </div>
+  );
+}
+
+function SectionCard({ title, children, icon: Icon }: { title: string; children: React.ReactNode; icon?: any }) {
+  return (
+    <div className="rounded-lg border border-border bg-card/30 p-4">
+      <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
+        {Icon && <Icon className="h-4 w-4 text-primary" />} {title}
+      </h4>
+      {children}
+    </div>
+  );
+}
+
+function KV({ label, value, mono }: { label: string; value: any; mono?: boolean }) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <div className="flex items-start justify-between gap-4 py-1 text-sm">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className={`text-foreground text-right ${mono ? "font-mono text-xs" : ""}`}>{String(value)}</span>
+    </div>
+  );
+}
+
+function StatusBadge({ ok, labelTrue = "Yes", labelFalse = "No" }: { ok: boolean | undefined; labelTrue?: string; labelFalse?: string }) {
+  if (ok === undefined) return <span className="text-xs text-muted-foreground">N/A</span>;
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${ok ? "text-green-400 border-green-400/30 bg-green-400/10" : "text-red-400 border-red-400/30 bg-red-400/10"}`}>
+      {ok ? <CheckCircle className="h-3 w-3 mr-1" /> : <AlertTriangle className="h-3 w-3 mr-1" />}
+      {ok ? labelTrue : labelFalse}
+    </span>
+  );
+}
+
+/* ─── Domain results ─── */
+
+function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: any; fetchFile: (d: string, t: "robots" | "security") => void }) {
+  const d = data?.data || data;
+  const info = d?.domain_info;
+  const risk = d?.risk_score || data?.risk_score;
+  const recs = d?.recommendations || data?.recommendations || [];
+  const u = urlData?.data || urlData;
+
+  return (
+    <div className="space-y-4">
+      {/* Risk score banner */}
+      {risk && (
+        <div className={`rounded-lg border p-4 flex items-center justify-between ${risk.level === "critical" || risk.level === "high" ? "border-red-500/30 bg-red-500/5" : risk.level === "medium" ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"}`}>
+          <div>
+            <div className="text-sm font-medium text-muted-foreground">Domain Risk Assessment</div>
+            <div className={`text-2xl font-bold ${risk.level === "critical" || risk.level === "high" ? "text-red-500" : risk.level === "medium" ? "text-yellow-500" : "text-green-400"}`}>
+              {risk.score}/100 — {risk.level?.toUpperCase()}
+            </div>
+          </div>
+          {u?.threat_analysis && (
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">URL Threat</div>
+              <StatusBadge ok={!u.threat_analysis.is_malicious} labelTrue="Safe" labelFalse="Malicious" />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* WHOIS */}
+        {info?.whois && (
+          <SectionCard title="WHOIS" icon={Globe}>
+            <KV label="Registrar" value={info.whois.registrar} />
+            <KV label="Created" value={info.whois.creation_date} />
+            <KV label="Expires" value={info.whois.expiration_date} />
+            <KV label="Registrant" value={info.whois.registrant} />
+            <KV label="Country" value={info.whois.country} />
+            {info.whois.name_servers?.length > 0 && <KV label="Name Servers" value={info.whois.name_servers.join(", ")} mono />}
+          </SectionCard>
+        )}
+
+        {/* DNS */}
+        {info?.dns_records && (
+          <SectionCard title="DNS Records" icon={Network}>
+            {Object.entries(info.dns_records).filter(([, v]) => (v as string[])?.length > 0).map(([type, records]) => (
+              <KV key={type} label={type} value={(records as string[]).join(", ")} mono />
+            ))}
+          </SectionCard>
+        )}
+
+        {/* SSL */}
+        {info?.ssl_info && (
+          <SectionCard title="SSL/TLS Certificate" icon={Lock}>
+            <KV label="Valid" value={info.ssl_info.valid ? "Yes" : "No"} />
+            <KV label="Issuer" value={info.ssl_info.issuer} />
+            <KV label="Subject" value={info.ssl_info.subject} />
+            <KV label="Valid From" value={info.ssl_info.valid_from} />
+            <KV label="Valid Until" value={info.ssl_info.valid_until} />
+            <KV label="Days to Expiry" value={info.ssl_info.days_until_expiry} />
+          </SectionCard>
+        )}
+
+        {/* Security Features */}
+        {info?.security_features && (
+          <SectionCard title="Security Features" icon={Shield}>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">DNSSEC</span><StatusBadge ok={info.security_features.dnssec} labelTrue="Enabled" labelFalse="Disabled" /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">DMARC</span><StatusBadge ok={!!info.security_features.dmarc} labelTrue="Present" labelFalse="Missing" /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">SPF</span><StatusBadge ok={!!info.security_features.spf} labelTrue="Present" labelFalse="Missing" /></div>
+              {info.security_features.robots_txt && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">robots.txt</span>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge ok={info.security_features.robots_txt.present} labelTrue="Present" labelFalse="Not Found" />
+                    {info.security_features.robots_txt.present && <button onClick={() => fetchFile(info.domain, "robots")} className="text-xs text-primary hover:underline">View</button>}
+                  </div>
+                </div>
+              )}
+              {info.security_features.security_txt && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">security.txt</span>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge ok={info.security_features.security_txt.present} labelTrue="Present" labelFalse="Not Found" />
+                    {info.security_features.security_txt.present && <button onClick={() => fetchFile(info.domain, "security")} className="text-xs text-primary hover:underline">View</button>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* Geolocation */}
+        {info?.geolocation && (
+          <SectionCard title="Geolocation" icon={Globe}>
+            <KV label="IP" value={info.geolocation.ip} mono />
+            <KV label="Country" value={info.geolocation.country} />
+            <KV label="City" value={info.geolocation.city} />
+            <KV label="ISP" value={info.geolocation.isp} />
+            <KV label="Organization" value={info.geolocation.organization} />
+          </SectionCard>
+        )}
+
+        {/* Subdomains */}
+        {info?.subdomains?.length > 0 && (
+          <SectionCard title={`Subdomains (${info.subdomains.length})`} icon={Globe}>
+            <div className="flex flex-wrap gap-1">
+              {info.subdomains.map((s: string) => <span key={s} className="rounded-full border border-border px-2 py-0.5 text-xs font-mono text-muted-foreground">{s}</span>)}
+            </div>
+          </SectionCard>
+        )}
+      </div>
+
+      {/* Recommendations */}
+      {recs.length > 0 && (
+        <SectionCard title="Recommendations">
+          <ul className="space-y-1">
+            {recs.map((r: any, i: number) => {
+              const text = typeof r === "string" ? r : r?.text || JSON.stringify(r);
+              const severity = typeof r === "object" ? r?.severity : undefined;
+              const mitre = typeof r === "object" ? r?.mitre : undefined;
+              const category = typeof r === "object" ? r?.category : undefined;
+              return (
+                <li key={`rec-${i}-${text.substring(0, 20)}`} className="rounded-lg border border-border/50 p-3 space-y-1">
+                  <div className="flex items-start gap-2">
+                    <span className="text-primary font-bold text-sm shrink-0">{i + 1}.</span>
+                    <span className="text-sm text-foreground">{text}</span>
+                  </div>
+                  {(severity || category || mitre) && (
+                    <div className="flex items-center gap-2 ml-5 flex-wrap">
+                      {category && <span className="text-xs text-muted-foreground">{category}</span>}
+                      {severity && <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${
+                        severity === "high" || severity === "critical" ? "text-red-400 border-red-400/30 bg-red-400/10" :
+                        severity === "medium" ? "text-yellow-400 border-yellow-400/30 bg-yellow-400/10" :
+                        "text-blue-400 border-blue-400/30 bg-blue-400/10"}`}>{severity}</span>}
+                      {mitre && <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary font-mono">{mitre}</span>}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+/* ─── IP results ─── */
+
+function IpResultsView({ data }: { data: any }) {
+  const d = data?.data || data;
+  const ip = d?.ip_details || data?.ip_details;
+  const risk = d?.risk_assessment || data?.risk_assessment;
+  const tech = d?.technical_details || data?.technical_details;
+  const vt = d?.virustotal;
+  const recs = d?.recommendations || data?.recommendations || [];
+
+  if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* Risk banner */}
+      {risk && (
+        <div className={`rounded-lg border p-4 ${risk.risk_level === "high" ? "border-red-500/30 bg-red-500/5" : risk.risk_level === "medium" ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-muted-foreground">AbuseIPDB Risk Level</div>
+              <div className={`text-xl font-bold ${risk.risk_level === "high" ? "text-red-500" : risk.risk_level === "medium" ? "text-yellow-500" : "text-green-400"}`}>
+                {risk.risk_level?.toUpperCase()} — Confidence Score: {risk.confidence_score}%
+              </div>
+            </div>
+            <div className="text-right text-sm text-muted-foreground">
+              <div>Reports: {risk.total_reports}</div>
+              {risk.last_reported && <div>Last: {risk.last_reported}</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {ip && (
+          <SectionCard title="IP Details" icon={Network}>
+            <KV label="Address" value={ip.address} mono />
+            <KV label="Domain" value={ip.domain} />
+            <KV label="ISP" value={ip.isp} />
+            {ip.location && <>
+              <KV label="Country" value={ip.location.country} />
+              <KV label="City" value={ip.location.city} />
+            </>}
+          </SectionCard>
+        )}
+
+        {tech && (
+          <SectionCard title="Technical" icon={Server}>
+            <KV label="ASN" value={tech.asn} mono />
+            <KV label="AS Name" value={tech.as_name} />
+            <KV label="Usage" value={tech.usage_type} />
+            <div className="flex items-center justify-between py-1"><span className="text-sm text-muted-foreground">Public IP</span><StatusBadge ok={tech.is_public} /></div>
+            <div className="flex items-center justify-between py-1"><span className="text-sm text-muted-foreground">TOR Node</span><StatusBadge ok={tech.is_tor} labelTrue="Yes" labelFalse="No" /></div>
+          </SectionCard>
+        )}
+
+        {vt?.risk_assessment && (
+          <SectionCard title="VirusTotal Analysis" icon={Shield}>
+            <KV label="Risk Score" value={`${vt.risk_assessment.risk_score}/100`} />
+            <KV label="Risk Level" value={vt.risk_assessment.risk_level} />
+            <KV label="Malicious" value={vt.risk_assessment.malicious_count} />
+            <KV label="Suspicious" value={vt.risk_assessment.suspicious_count} />
+            <KV label="Detection Ratio" value={vt.risk_assessment.detection_ratio} />
+          </SectionCard>
+        )}
+      </div>
+
+      {recs.length > 0 && (
+        <SectionCard title="Recommendations">
+          <ul className="space-y-1">{recs.map((r: any, i: number) => {
+            const text = typeof r === "string" ? r : r?.text || JSON.stringify(r);
+            return <li key={`rec2-${i}-${text.substring(0, 20)}`} className="text-sm text-muted-foreground flex gap-2"><span className="text-primary font-bold">{i + 1}.</span>{text}</li>;
+          })}</ul>
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+/* ─── PCAP results ─── */
+
+function PcapResultsView({ data }: { data: any }) {
+  const d = data?.data || data;
+  if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
+
+  return (
+    <div className="space-y-4">
+      {d?.metadata && (
+        <SectionCard title="File Info">
+          {Object.entries(d.metadata).map(([k, v]) => <KV key={k} label={k} value={v} />)}
+        </SectionCard>
+      )}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {d?.pcap_analysis && (
+          <SectionCard title="Protocol Distribution" icon={Wifi}>
+            {Object.entries(d.pcap_analysis).map(([p, c]) => <KV key={p} label={p} value={c} />)}
+          </SectionCard>
+        )}
+        {d?.virustotal?.risk_assessment && (
+          <SectionCard title="VirusTotal" icon={Shield}>
+            <KV label="Risk Score" value={`${d.virustotal.risk_assessment.risk_score}/100`} />
+            <KV label="Risk Level" value={d.virustotal.risk_assessment.risk_level} />
+            <KV label="Malicious" value={d.virustotal.risk_assessment.malicious_count} />
+            <KV label="Detection Ratio" value={d.virustotal.risk_assessment.detection_ratio} />
+          </SectionCard>
+        )}
+      </div>
+      {d?.chart_base64 && (
+        <SectionCard title="Protocol Chart">
+          <img src={`data:image/png;base64,${d.chart_base64}`} alt="Protocol Chart" className="max-w-full rounded-lg" />
+        </SectionCard>
+      )}
+      {d?.suspicious_ips?.length > 0 && (
+        <SectionCard title="Suspicious IPs" icon={AlertTriangle}>
+          <div className="flex flex-wrap gap-1">{d.suspicious_ips.map((ip: string) => <span key={ip} className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs font-mono text-red-400">{ip}</span>)}</div>
+        </SectionCard>
+      )}
+      {d?.potential_threats?.length > 0 && (
+        <SectionCard title="Potential Threats" icon={AlertTriangle}>
+          {d.potential_threats.map((t: any, i: number) => (
+            <div key={`threat-${i}-${t.type}-${t.severity}`} className="flex items-center justify-between py-1 text-sm">
+              <span className="text-foreground">{t.type}</span>
+              <span className={`text-xs ${t.severity === "high" ? "text-red-400" : t.severity === "medium" ? "text-yellow-400" : "text-blue-400"}`}>{t.severity}</span>
+            </div>
+          ))}
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+/* ─── Port results ─── */
+
+function PortResultsView({ data }: { data: any }) {
+  const d = data?.data || data;
+  const ports = d?.ports || data?.ports || [];
+  const host = d?.host_info || data?.host_info;
+  const highRiskPortsRaw = d?.risk_summary?.high_risk_ports;
+  const highRiskPorts = Array.isArray(highRiskPortsRaw)
+    ? highRiskPortsRaw
+    : highRiskPortsRaw !== undefined && highRiskPortsRaw !== null && highRiskPortsRaw !== ""
+      ? [highRiskPortsRaw]
+      : [];
+  if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
+
+  return (
+    <div className="space-y-4">
+      {host && (
+        <SectionCard title="Host Info" icon={Server}>
+          <KV label="Hostname" value={host.hostname} />
+          <KV label="State" value={host.state} />
+          <KV label="Protocols" value={host.protocols?.join(", ")} />
+        </SectionCard>
+      )}
+      {ports.length > 0 && (
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-card/80 border-b border-border">
+              <tr>
+                <th className="px-4 py-2 text-left text-muted-foreground text-xs font-medium">Port</th>
+                <th className="px-4 py-2 text-left text-muted-foreground text-xs font-medium">Protocol</th>
+                <th className="px-4 py-2 text-left text-muted-foreground text-xs font-medium">State</th>
+                <th className="px-4 py-2 text-left text-muted-foreground text-xs font-medium">Service</th>
+                <th className="px-4 py-2 text-left text-muted-foreground text-xs font-medium">Version</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {ports.map((p: any, i: number) => (
+                <tr key={`port-${i}-${p.port}-${p.protocol}`} className="hover:bg-card/50">
+                  <td className="px-4 py-2 font-mono text-primary">{p.port}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{p.protocol}</td>
+                  <td className="px-4 py-2"><span className={`text-xs ${p.state === "open" ? "text-green-400" : "text-red-400"}`}>{p.state}</span></td>
+                  <td className="px-4 py-2 text-foreground">{p.service || "—"}</td>
+                  <td className="px-4 py-2 text-muted-foreground text-xs">{p.version || p.product || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {d?.risk_summary && (
+        <SectionCard title="Risk Summary" icon={AlertTriangle}>
+          <KV label="Open Ports" value={d.risk_summary.open_ports} />
+          <KV label="High Risk Ports" value={highRiskPorts.length > 0 ? highRiskPorts.join(", ") : "None"} />
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+/* ─── Vuln results ─── */
+
+function VulnResultsView({ data }: { data: any }) {
+  const d = data?.data || data;
+  const vulns = d?.vulnerabilities || data?.vulnerabilities || [];
+  if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
+
+  return (
+    <div className="space-y-4">
+      {d?.risk_summary && (
+        <div className={`rounded-lg border p-4 ${(d.risk_summary.high_severity || 0) > 0 ? "border-red-500/30 bg-red-500/5" : "border-green-500/30 bg-green-500/5"}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-muted-foreground">Vulnerability Assessment</div>
+              <div className="text-lg font-bold text-foreground">{vulns.length} items found</div>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <span className="text-red-400">High: {d.risk_summary.high_severity || 0}</span>
+              <span className="text-yellow-400">Medium: {d.risk_summary.medium_severity || 0}</span>
+              <span className="text-blue-400">Low: {d.risk_summary.low_severity || 0}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {vulns.map((v: any, i: number) => (
+        <div key={`vuln-${i}-${v.service}-${v.port}`} className="rounded-lg border border-border p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground">{v.service} {v.port ? `(port ${v.port})` : ""}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${v.severity === "high" ? "text-red-400 border-red-400/30 bg-red-400/10" : v.severity === "medium" ? "text-yellow-400 border-yellow-400/30 bg-yellow-400/10" : "text-blue-400 border-blue-400/30 bg-blue-400/10"}`}>{v.severity}</span>
+          </div>
+          {v.version && <div className="text-xs text-muted-foreground mb-1">Version: {v.version}</div>}
+          {v.potential_issues?.length > 0 && (
+            <ul className="mt-2 space-y-1">{v.potential_issues.map((issue: string, j: number) => <li key={`issue-${i}-${j}-${issue.substring(0, 20)}`} className="text-xs text-muted-foreground flex gap-1"><AlertTriangle className="h-3 w-3 text-yellow-400 shrink-0 mt-0.5" />{issue}</li>)}</ul>
+          )}
+          {v.recommendation && <div className="mt-2 text-xs text-primary">{v.recommendation}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Header results ─── */
+
+function HeaderResultsView({ data }: { data: any }) {
+  const d = data?.data || data;
+  const headers = d?.headers || data?.headers;
+  const score = d?.security_score ?? data?.security_score;
+  const maxScore = d?.max_score ?? data?.max_score;
+  const grade = d?.grade || data?.grade;
+  if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
+
+  return (
+    <div className="space-y-4">
+      {score !== undefined && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 flex items-center justify-between">
+          <div>
+            <div className="text-sm text-muted-foreground">Security Score</div>
+            <div className="text-2xl font-bold text-primary">{score}/{maxScore}</div>
+          </div>
+          {grade && (
+            <div className={`text-4xl font-black ${grade === "A" || grade === "A+" ? "text-green-400" : grade === "B" ? "text-yellow-400" : grade === "C" ? "text-orange-400" : "text-red-400"}`}>
+              {grade}
+            </div>
+          )}
+        </div>
+      )}
+      {headers && Object.entries(headers).map(([name, info]: [string, any]) => (
+        <div key={name} className="flex items-center justify-between rounded-lg border border-border p-3">
+          <div>
+            <span className="text-sm font-medium text-foreground">{name}</span>
+            {info.value && <span className="ml-2 text-xs font-mono text-muted-foreground truncate max-w-xs">{info.value.substring(0, 80)}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {info.score !== undefined && <span className="text-xs text-muted-foreground">{info.score} pts</span>}
+            <StatusBadge ok={info.present} labelTrue="Present" labelFalse="Missing" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Email results ─── */
+
+function EmailResultsView({ data }: { data: any }) {
+  const d = data?.data || data;
+  const email = d?.email_security || data?.email_security;
+  if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
+  if (!email) return <div className="text-sm text-muted-foreground">No email security data returned.</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 flex items-center justify-between">
+        <div>
+          <div className="text-sm text-muted-foreground">Email Security Score</div>
+          <div className="text-2xl font-bold text-primary">{email.total_score}/{email.max_score}</div>
+        </div>
+        {email.grade && (
+          <div className={`text-4xl font-black ${email.grade === "A" || email.grade === "A+" ? "text-green-400" : email.grade === "B" ? "text-yellow-400" : "text-red-400"}`}>
+            {email.grade}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {["spf", "dmarc", "dkim"].map((type) => {
+          const rec = email[type];
+          if (!rec) return null;
+          return (
+            <SectionCard key={type} title={type.toUpperCase()} icon={Mail}>
+              <div className="flex items-center justify-between mb-2"><span className="text-sm text-muted-foreground">Status</span><StatusBadge ok={rec.present} labelTrue="Present" labelFalse="Missing" /></div>
+              <KV label="Score" value={rec.score} />
+              {rec.record && <div className="mt-2 text-xs font-mono text-muted-foreground break-all bg-background/50 rounded p-2">{rec.record}</div>}
+            </SectionCard>
+          );
+        })}
       </div>
     </div>
   );
