@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: "CyberRegis - Threat Intelligence Platform",
-  description: "Industry-grade threat intelligence, domain reconnaissance, IP analysis, vulnerability scanning, and security assessment.",
+  // description: "Industry-grade threat intelligence, domain reconnaissance, IP analysis, vulnerability scanning, and security assessment.",
 };
 
 export default function RootLayout({
