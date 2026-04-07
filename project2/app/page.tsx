@@ -14,11 +14,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { loadStoredScans, StoredScan, upsertStoredScan } from "@/lib/cache";
 
 // Define interface for API responses
 interface ScanResult {
   data?: {
-    url_analysis?: { 
+    url_analysis?: {
       input_url: string;
       parsed_details?: {
         domain: string;
@@ -29,7 +30,7 @@ interface ScanResult {
       };
       security_check_time?: string;
     };
-    threat_analysis?: { 
+    threat_analysis?: {
       is_malicious: boolean;
       threats_found?: number;
       threat_details?: any[];
@@ -39,7 +40,7 @@ interface ScanResult {
       };
     };
     additional_checks?: {
-      domain_analysis?: { 
+      domain_analysis?: {
         risk_level: string;
         risk_score?: number;
         risk_factors?: string[];
@@ -58,11 +59,11 @@ interface ScanResult {
           status: string;
         };
       };
-      ssl_security?: { 
+      ssl_security?: {
         valid: boolean;
         status_code?: number;
       };
-      suspicious_patterns?: { 
+      suspicious_patterns?: {
         risk_level: string;
         found: boolean;
         matches?: string[];
@@ -276,7 +277,7 @@ interface ScanResult {
   status: "success" | "error";
   timestamp?: string;
   message?: string;
-  
+
   // Advanced Scanner fields (root level)
   ports?: Array<{
     port: number;
@@ -301,13 +302,7 @@ interface ScanResult {
     severity: string;
     recommendation?: string;
   }>;
-  ssl_analysis?: {
-    basic_info?: any;
-    cipher_info?: any;
-    domain?: string;
-    timestamp?: string;
-  };
-  
+
   // Security Scanner fields (root level)
   headers?: {
     [headerName: string]: {
@@ -343,13 +338,6 @@ interface ScanResult {
   };
 }
 
-// Interface for stored scan data
-interface StoredScan {
-  input: string;
-  result: ScanResult;
-  timestamp: string;
-}
-
 // Interface for chatbot messages
 interface ChatMessage {
   id: number;
@@ -383,11 +371,11 @@ export default function Home() {
   ]);
   const [chatInput, setChatInput] = useState("");
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  
+
   // View mode states for each scan type
   const [ipViewMode, setIpViewMode] = useState<'normal' | 'json'>('normal');
   const [logViewMode, setLogViewMode] = useState<'normal' | 'json'>('normal');
-  
+
   // File content modal state
   const [fileContent, setFileContent] = useState<{
     domain: string;
@@ -412,10 +400,6 @@ export default function Home() {
   const [vulnLoading, setVulnLoading] = useState(false);
   const [vulnViewMode, setVulnViewMode] = useState<'normal' | 'json'>('normal');
 
-  const [sslDomain, setSslDomain] = useState("");
-  const [sslResults, setSslResults] = useState<any>(null);
-  const [sslLoading, setSslLoading] = useState(false);
-  const [sslViewMode, setSslViewMode] = useState<'normal' | 'json'>('normal');
 
   // Security Scanner states
   const [headerUrl, setHeaderUrl] = useState("");
@@ -428,15 +412,13 @@ export default function Home() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailViewMode, setEmailViewMode] = useState<'normal' | 'json'>('normal');
 
-  // Load stored scans from localStorage on mount
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
   useEffect(() => {
     // Set initial chat message timestamp on client side to avoid hydration mismatch
-    setChatMessages(prev => prev.map(msg => 
+    setChatMessages(prev => prev.map(msg =>
       msg.id === 1 ? { ...msg, timestamp: new Date().toLocaleTimeString() } : msg
     ));
-    
-    // Note: Monitoring results endpoint is not implemented yet
-    // Will be added when the backend is ready
   }, []);
 
   const checkIp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -445,7 +427,7 @@ export default function Home() {
     setIsCached(false);
 
     // Check localStorage
-    const storedIps: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_ips") || "[]");
+    const storedIps = loadStoredScans("cyberregis_ips");
     const cached = storedIps.find((scan) => scan.input === ip);
     if (cached) {
       setIpResults(cached.result);
@@ -454,7 +436,6 @@ export default function Home() {
       return;
     }
 
-    const API_URL = "http://localhost:4000";
     try {
       const response = await fetch(`${API_URL}/api/check-ip`, {
         method: "POST",
@@ -466,13 +447,11 @@ export default function Home() {
       console.log("Security analysis data in response:", data.virustotal || data.data?.virustotal);
       setIpResults(data);
 
-      // Store in localStorage
-      storedIps.push({
+      upsertStoredScan("cyberregis_ips", {
         input: ip,
         result: data,
         timestamp: new Date().toISOString(),
       });
-      localStorage.setItem("cyberregis_ips", JSON.stringify(storedIps));
     } catch (error) {
       setIpResults({
         status: "error",
@@ -509,7 +488,7 @@ export default function Home() {
     setIsCached(false);
 
     // Check localStorage (using file name as key)
-    const storedLogs: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_logs") || "[]");
+    const storedLogs = loadStoredScans("cyberregis_logs");
     const cached = storedLogs.find((scan) => scan.input === selectedFile.name);
     if (cached) {
       setLogResults(cached.result);
@@ -523,7 +502,7 @@ export default function Home() {
       formData.append("file", selectedFile);
       console.log("Uploading file:", selectedFile.name, selectedFile.size);
 
-      const response = await fetch("http://localhost:4000/api/analyze-pcap", {
+      const response = await fetch(`${API_URL}/api/analyze-pcap`, {
         method: "POST",
         body: formData,
       });
@@ -539,12 +518,11 @@ export default function Home() {
       setLogResults(data);
 
       // Store in localStorage
-      storedLogs.push({
+      upsertStoredScan("cyberregis_logs", {
         input: selectedFile.name,
         result: data,
         timestamp: new Date().toISOString(),
       });
-      localStorage.setItem("cyberregis_logs", JSON.stringify(storedLogs));
     } catch (error) {
       setLogResults({
         status: "error",
@@ -559,14 +537,14 @@ export default function Home() {
   const fetchFileContent = async (domain: string, fileType: 'robots' | 'security') => {
     setLoadingFile(true);
     try {
-      const response = await fetch("http://localhost:4000/api/security-file-content", {
+      const response = await fetch(`${API_URL}/api/security-file-content`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domain, file_type: fileType }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.status === "success") {
         setFileContent(data.file_info);
         setFileModalOpen(true);
@@ -621,7 +599,7 @@ export default function Home() {
           {results.data.virustotal && (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
-              
+
               {/* VirusTotal Summary */}
               {results.data.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
                 <div className="bg-blue-50 p-3 rounded-lg">
@@ -637,23 +615,21 @@ export default function Home() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium">Risk Score:</span>
-                      <span className={`text-lg font-bold ${
-                        results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
+                      <span className={`text-lg font-bold ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
                         results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
-                        results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
-                      }`}>
+                          results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
+                        }`}>
                         {results.data.virustotal.risk_assessment.risk_score}/100
                       </span>
                     </div>
-                    
+
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${
-                          results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
+                      <div
+                        className={`h-2 rounded-full ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
                           results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
-                          results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
-                        }`}
+                            results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
                         style={{ width: `${results.data.virustotal.risk_assessment.risk_score}%` }}
                       ></div>
                     </div>
@@ -661,12 +637,11 @@ export default function Home() {
 
                   {/* Risk Level Badge */}
                   <div>
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                      results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${results.data.virustotal.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
                       results.data.virustotal.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
-                      results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
+                        results.data.virustotal.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                      }`}>
                       Risk Level: {results.data.virustotal.risk_assessment.risk_level}
                     </span>
                   </div>
@@ -749,9 +724,9 @@ export default function Home() {
                     {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
                       <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
                         <span>{engine}</span>
-                        <span className={`${result.category === 'malicious' ? 'text-red-500' : 
-                                           result.category === 'suspicious' ? 'text-yellow-500' : 
-                                           'text-green-500'}`}>
+                        <span className={`${result.category === 'malicious' ? 'text-red-500' :
+                          result.category === 'suspicious' ? 'text-yellow-500' :
+                            'text-green-500'}`}>
                           {result.category}
                         </span>
                       </div>
@@ -793,16 +768,16 @@ export default function Home() {
     }
 
     // Handle IP-specific results (check both root level and nested in data)
-    if (results.ip_details || results.risk_assessment || results.technical_details || 
-        results.data?.ip_details || results.data?.risk_assessment || results.data?.technical_details) {
-      
+    if (results.ip_details || results.risk_assessment || results.technical_details ||
+      results.data?.ip_details || results.data?.risk_assessment || results.data?.technical_details) {
+
       // Use data from root level or nested under data
       const ipDetails = results.ip_details || results.data?.ip_details;
       const riskAssessment = results.risk_assessment || results.data?.risk_assessment;
       const technicalDetails = results.technical_details || results.data?.technical_details;
       const recommendations = results.recommendations || results.data?.recommendations;
       const virustotalData = results.data?.virustotal;
-      
+
       // Debug logging
       console.log("IP Results Debug:", {
         ipDetails,
@@ -812,7 +787,7 @@ export default function Home() {
         virustotalData,
         fullResults: results
       });
-      
+
       return (
         <div className="space-y-3">
           {/* IP Details */}
@@ -866,7 +841,7 @@ export default function Home() {
           {virustotalData && (
             <div className="space-y-3">
               <h4 className="text-sm font-semibold">🦠 Security Analysis</h4>
-              
+
               {/* VirusTotal Summary */}
               {results.data?.virustotal_summary && results.data.virustotal_summary !== 'No VirusTotal data available' && (
                 <div className="bg-blue-50 p-3 rounded-lg">
@@ -882,23 +857,21 @@ export default function Home() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium">Risk Score:</span>
-                      <span className={`text-lg font-bold ${
-                        virustotalData.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
+                      <span className={`text-lg font-bold ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'text-red-600' :
                         virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'text-orange-600' :
-                        virustotalData.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
-                      }`}>
+                          virustotalData.risk_assessment.risk_level === 'LOW' ? 'text-yellow-600' : 'text-green-600'
+                        }`}>
                         {virustotalData.risk_assessment.risk_score}/100
                       </span>
                     </div>
-                    
+
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${
-                          virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
+                      <div
+                        className={`h-2 rounded-full ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-500' :
                           virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-500' :
-                          virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
-                        }`}
+                            virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
                         style={{ width: `${virustotalData.risk_assessment.risk_score}%` }}
                       ></div>
                     </div>
@@ -906,12 +879,11 @@ export default function Home() {
 
                   {/* Risk Level Badge */}
                   <div>
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                      virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${virustotalData.risk_assessment.risk_level === 'HIGH' ? 'bg-red-100 text-red-800' :
                       virustotalData.risk_assessment.risk_level === 'MEDIUM' ? 'bg-orange-100 text-orange-800' :
-                      virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
+                        virustotalData.risk_assessment.risk_level === 'LOW' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                      }`}>
                       Risk Level: {virustotalData.risk_assessment.risk_level}
                     </span>
                   </div>
@@ -994,9 +966,9 @@ export default function Home() {
                     {Object.entries(virustotalData.data.attributes.results).slice(0, 8).map(([engine, result]) => (
                       <div key={engine} className="flex justify-between text-xs bg-muted/20 p-1 rounded">
                         <span>{engine}</span>
-                        <span className={`${(result as any).category === 'malicious' ? 'text-red-500' : 
-                                           (result as any).category === 'suspicious' ? 'text-yellow-500' : 
-                                           'text-green-500'}`}>
+                        <span className={`${(result as any).category === 'malicious' ? 'text-red-500' :
+                          (result as any).category === 'suspicious' ? 'text-yellow-500' :
+                            'text-green-500'}`}>
                           {(result as any).category}
                         </span>
                       </div>
@@ -1031,11 +1003,10 @@ export default function Home() {
               <div className="space-y-1 ml-4">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Risk Level:</span>
-                  <span className={`text-sm font-medium ${
-                    riskAssessment.risk_level === 'High' ? 'text-red-500' :
+                  <span className={`text-sm font-medium ${riskAssessment.risk_level === 'High' ? 'text-red-500' :
                     riskAssessment.risk_level === 'Medium' ? 'text-yellow-500' :
-                    'text-green-500'
-                  }`}>
+                      'text-green-500'
+                    }`}>
                     {riskAssessment.risk_level}
                   </span>
                 </div>
@@ -1112,7 +1083,7 @@ export default function Home() {
       const ports = results.ports || results.data?.ports;
       const hostInfo = results.host_info || results.data?.host_info;
       if (!ports) return <></>;
-      
+
       return (
         <div className="space-y-3">
           {hostInfo && (
@@ -1130,7 +1101,7 @@ export default function Home() {
               </div>
             </div>
           )}
-          
+
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Open Ports ({ports.length}):</div>
             <div className="space-y-2">
@@ -1138,9 +1109,8 @@ export default function Home() {
                 <div key={index} className="border border-border/20 rounded p-2 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-mono font-medium">Port {port.port}/{port.protocol}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      port.state === 'open' ? 'bg-green-500/20 text-green-600' : 'bg-gray-500/20 text-gray-600'
-                    }`}>
+                    <span className={`text-xs px-2 py-1 rounded ${port.state === 'open' ? 'bg-green-500/20 text-green-600' : 'bg-gray-500/20 text-gray-600'
+                      }`}>
                       {port.state}
                     </span>
                   </div>
@@ -1165,7 +1135,7 @@ export default function Home() {
     if (results.vulnerabilities || results.data?.vulnerabilities) {
       const vulnerabilities = results.vulnerabilities || results.data?.vulnerabilities;
       if (!vulnerabilities) return <></>;
-      
+
       return (
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">Vulnerabilities Found ({vulnerabilities.length}):</div>
@@ -1174,11 +1144,10 @@ export default function Home() {
               <div key={index} className="border border-border/20 rounded p-2 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{vuln.service}</span>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    vuln.severity === 'High' ? 'bg-red-500/20 text-red-600' :
+                  <span className={`text-xs px-2 py-1 rounded ${vuln.severity === 'High' ? 'bg-red-500/20 text-red-600' :
                     vuln.severity === 'Medium' ? 'bg-yellow-500/20 text-yellow-600' :
-                    'bg-green-500/20 text-green-600'
-                  }`}>
+                      'bg-green-500/20 text-green-600'
+                    }`}>
                     {vuln.severity}
                   </span>
                 </div>
@@ -1203,47 +1172,13 @@ export default function Home() {
       );
     }
 
-    // Handle SSL Analysis results
-    if (results.ssl_analysis || results.data?.ssl_analysis) {
-      const sslAnalysis = results.ssl_analysis || results.data?.ssl_analysis;
-      return (
-        <div className="space-y-3">
-          <div className="text-sm text-muted-foreground">SSL/TLS Analysis:</div>
-          <div className="space-y-2 ml-4">
-            {sslAnalysis.basic_info && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Basic Information:</div>
-                <div className="space-y-1 ml-4">
-                  {Object.entries(sslAnalysis.basic_info).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{key}:</span>
-                      <span className="text-xs">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sslAnalysis.cipher_info && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Cipher Information:</div>
-                <div className="space-y-1 ml-4">
-                  {Object.entries(sslAnalysis.cipher_info).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{key}:</span>
-                      <span className="text-xs">{String(value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
 
     // Handle Security Headers results
     if (results.headers || results.data?.headers) {
-      const headers = results.headers || results.data?.headers;
+      const headers = (results.headers || results.data?.headers || {}) as Record<
+        string,
+        { present?: boolean; value?: string }
+      >;
       const securityScore = results.security_score || results.data?.security_score;
       const grade = results.grade || results.data?.grade;
       return (
@@ -1257,25 +1192,28 @@ export default function Home() {
               </span>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Security Headers:</div>
             <div className="space-y-2">
-              {Object.entries(headers).map(([headerName, headerInfo]) => (
-                <div key={headerName} className="border border-border/20 rounded p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{headerName}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      headerInfo.present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                    }`}>
-                      {headerInfo.present ? 'Present' : 'Missing'}
-                    </span>
+              {Object.entries(headers).map(([headerName, headerInfo]) => {
+                const present = !!headerInfo?.present;
+                const value = headerInfo?.value;
+                return (
+                  <div key={headerName} className="border border-border/20 rounded p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{headerName}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
+                        }`}>
+                        {present ? 'Present' : 'Missing'}
+                      </span>
+                    </div>
+                    {value && (
+                      <div className="text-xs text-muted-foreground mt-1">{value}</div>
+                    )}
                   </div>
-                  {headerInfo.value && (
-                    <div className="text-xs text-muted-foreground mt-1">{headerInfo.value}</div>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -1290,31 +1228,35 @@ export default function Home() {
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Email Security Score:</div>
             <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold">{emailSecurity.grade}</span>
+              <span className="text-lg font-bold">{emailSecurity?.grade ?? "N/A"}</span>
               <span className="text-sm text-muted-foreground">
-                ({emailSecurity.total_score}/{emailSecurity.max_score})
+                ({emailSecurity?.total_score ?? "–"}/{emailSecurity?.max_score ?? "–"})
               </span>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Security Features:</div>
             <div className="space-y-2">
-              {Object.entries(emailSecurity).filter(([key]) => key in ['spf', 'dmarc', 'dkim']).map(([feature, info]) => (
-                <div key={feature} className="border border-border/20 rounded p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{feature.upper()}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      info.present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
-                    }`}>
-                      {info.present ? 'Present' : 'Missing'}
-                    </span>
+              {["spf", "dmarc", "dkim"].map((feature) => {
+                const info = (emailSecurity as Record<string, any>)[feature];
+                if (!info) return null;
+                const present = !!info.present;
+                return (
+                  <div key={feature} className="border border-border/20 rounded p-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{feature.toUpperCase()}</span>
+                      <span className={`text-xs px-2 py-1 rounded ${present ? 'bg-green-500/20 text-green-600' : 'bg-red-500/20 text-red-600'
+                        }`}>
+                        {present ? 'Present' : 'Missing'}
+                      </span>
+                    </div>
+                    {present && info.record && (
+                      <div className="text-xs text-muted-foreground mt-1 font-mono">{info.record}</div>
+                    )}
                   </div>
-                  {info.present && info.record && (
-                    <div className="text-xs text-muted-foreground mt-1 font-mono">{info.record}</div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1414,7 +1356,7 @@ export default function Home() {
                 {results.domain_info.security_features.waf_detected && (
                   <div>WAF: {results.domain_info.security_features.waf_detected}</div>
                 )}
-                
+
                 {/* robots.txt with clickable link */}
                 <div className="flex items-center gap-2">
                   <span>robots.txt: {results.domain_info.security_features.robots_txt?.present ? "Present" : "Not Found"}</span>
@@ -1431,7 +1373,7 @@ export default function Home() {
                     </Button>
                   )}
                 </div>
-                
+
                 {/* security.txt with clickable link */}
                 <div className="flex items-center gap-2">
                   <span>security.txt: {results.domain_info.security_features.security_txt?.present ? "Present" : "Not Found"}</span>
@@ -1564,15 +1506,15 @@ export default function Home() {
             </div>
           )}
 
-                    {/* Recommendations */}
+          {/* Recommendations */}
           {results.data.recommendations && results.data.recommendations.length > 0 && (
             <div className="space-y-2">
               <span className="text-sm font-medium text-green-600">Recommendations:</span>
               <div className="text-sm pl-4 space-y-1">
-                    {results.data.recommendations.map((rec, index) => (
+                {results.data.recommendations.map((rec, index) => (
                   <div key={index}>• {rec}</div>
-                    ))}
-                </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1599,9 +1541,9 @@ export default function Home() {
                 {Object.entries(results.data.virustotal.data.attributes.results).slice(0, 8).map(([engine, result]) => (
                   <div key={engine} className="flex justify-between text-sm bg-muted/20 p-1 rounded">
                     <span>{engine}</span>
-                    <span className={`${result.category === 'malicious' ? 'text-red-500' : 
-                                       result.category === 'suspicious' ? 'text-yellow-500' : 
-                                       'text-green-500'}`}>
+                    <span className={`${result.category === 'malicious' ? 'text-red-500' :
+                      result.category === 'suspicious' ? 'text-yellow-500' :
+                        'text-green-500'}`}>
                       {result.category}
                     </span>
                   </div>
@@ -1614,7 +1556,7 @@ export default function Home() {
           {(results.data?.additional_checks || results.data?.threat_analysis || results.data?.url_analysis) && (
             <div className="space-y-2">
               <span className="text-sm font-medium">Technical Details:</span>
-              
+
               {/* URL Analysis */}
               {results.data.url_analysis && (
                 <div className="space-y-1">
@@ -1754,17 +1696,32 @@ export default function Home() {
     e.preventDefault();
     setPortLoading(true);
     setPortResults(null);
+    setIsCached(false);
+
+    const storedPorts = loadStoredScans("cyberregis_ports");
+    const cached = storedPorts.find((scan) => scan.input === portTarget);
+    if (cached) {
+      setPortResults(cached.result);
+      setIsCached(true);
+      setPortLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/scan-ports", {
+      const response = await fetch(`${API_URL}/api/scan-ports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: portTarget }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setPortResults(data);
+        upsertStoredScan("cyberregis_ports", {
+          input: portTarget,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setPortResults({
           status: "error",
@@ -1785,17 +1742,32 @@ export default function Home() {
     e.preventDefault();
     setVulnLoading(true);
     setVulnResults(null);
+    setIsCached(false);
+
+    const storedVulns = loadStoredScans("cyberregis_vuln");
+    const cached = storedVulns.find((scan) => scan.input === vulnTarget);
+    if (cached) {
+      setVulnResults(cached.result);
+      setIsCached(true);
+      setVulnLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/vulnerability-scan", {
+      const response = await fetch(`${API_URL}/api/vulnerability-scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target: vulnTarget }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setVulnResults(data);
+        upsertStoredScan("cyberregis_vuln", {
+          input: vulnTarget,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setVulnResults({
           status: "error",
@@ -1812,53 +1784,38 @@ export default function Home() {
     }
   };
 
-  const analyzeSSL = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSslLoading(true);
-    setSslResults(null);
-
-    try {
-      const response = await fetch("http://localhost:4000/api/ssl-analysis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: sslDomain }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setSslResults(data);
-      } else {
-        setSslResults({
-          status: "error",
-          message: `SSL analysis failed: ${response.statusText}`,
-        });
-      }
-    } catch (error) {
-      setSslResults({
-        status: "error",
-        message: `SSL analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    } finally {
-      setSslLoading(false);
-    }
-  };
 
   // Security Scanner Functions
   const scanSecurityHeaders = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setHeaderLoading(true);
     setHeaderResults(null);
+    setIsCached(false);
+
+    const storedHeaders = loadStoredScans("cyberregis_headers");
+    const cached = storedHeaders.find((scan) => scan.input === headerUrl);
+    if (cached) {
+      setHeaderResults(cached.result);
+      setIsCached(true);
+      setHeaderLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/security-headers", {
+      const response = await fetch(`${API_URL}/api/security-headers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: headerUrl }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setHeaderResults(data);
+        upsertStoredScan("cyberregis_headers", {
+          input: headerUrl,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setHeaderResults({
           status: "error",
@@ -1879,17 +1836,32 @@ export default function Home() {
     e.preventDefault();
     setEmailLoading(true);
     setEmailResults(null);
+    setIsCached(false);
+
+    const storedEmails = loadStoredScans("cyberregis_email");
+    const cached = storedEmails.find((scan) => scan.input === emailDomain);
+    if (cached) {
+      setEmailResults(cached.result);
+      setIsCached(true);
+      setEmailLoading(false);
+      return;
+    }
 
     try {
-      const response = await fetch("http://localhost:4000/api/email-security", {
+      const response = await fetch(`${API_URL}/api/email-security`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domain: emailDomain }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setEmailResults(data);
+        upsertStoredScan("cyberregis_email", {
+          input: emailDomain,
+          result: data,
+          timestamp: new Date().toISOString(),
+        });
       } else {
         setEmailResults({
           status: "error",
@@ -1912,7 +1884,7 @@ export default function Home() {
     setIntegratedResults(null);
 
     // Check localStorage for cached results
-    const storedIntegrated: StoredScan[] = JSON.parse(localStorage.getItem("cyberregis_integrated") || "[]");
+    const storedIntegrated = loadStoredScans("cyberregis_integrated");
     const cached = storedIntegrated.find((scan) => scan.input === integratedInput);
     if (cached) {
       setIntegratedResults(cached.result as any);
@@ -1928,12 +1900,12 @@ export default function Home() {
     try {
       // Run both scans in parallel
       const [urlResponse, domainResponse] = await Promise.all([
-        fetch("http://localhost:4000/api/check-url", {
+        fetch(`${API_URL}/api/check-url`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: integratedInput }),
         }),
-        fetch("http://localhost:4000/api/analyze-domain", {
+        fetch(`${API_URL}/api/analyze-domain`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ domain }),
@@ -1948,13 +1920,11 @@ export default function Home() {
         domainResults: domainData,
       });
 
-      // Store in localStorage
-      storedIntegrated.push({
+      upsertStoredScan("cyberregis_integrated", {
         input: integratedInput,
         result: { urlResults: urlData, domainResults: domainData } as any,
         timestamp: new Date().toISOString(),
       });
-      localStorage.setItem("cyberregis_integrated", JSON.stringify(storedIntegrated));
 
     } catch (error) {
       setIntegratedResults({
@@ -1982,7 +1952,7 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:4000/api/chat", {
+      const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: chatInput }),
@@ -2035,6 +2005,9 @@ export default function Home() {
               <Link href="/resources" className="text-foreground hover:text-primary transition-colors">
                 Resources
               </Link>
+              <Link href="/monitoring" className="text-foreground hover:text-primary transition-colors">
+                Monitoring
+              </Link>
               <div className="flex items-center space-x-1">
                 <Activity className="w-4 h-4 text-green-500 animate-pulse" />
                 <span className="text-sm text-muted-foreground">Active</span>
@@ -2047,9 +2020,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto p-8">
         <div className="flex items-center justify-between mb-12">
           <div>
-            <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/50">
-              CyberRegis
-            </h1>
+
             <p className="text-muted-foreground">Advanced Threat Detection System</p>
           </div>
         </div>
@@ -2304,8 +2275,8 @@ export default function Home() {
                         <div className="bg-card/50 border border-border/20 rounded-lg p-4">
                           <h4 className="font-medium text-sm text-muted-foreground mb-2">Overall Risk Level</h4>
                           <div className="text-2xl font-bold text-center">
-                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious || 
-                             integratedResults.domainResults?.status === "error" ? (
+                            {integratedResults.urlResults?.data?.threat_analysis?.is_malicious ||
+                              integratedResults.domainResults?.status === "error" ? (
                               <span className="text-red-500">HIGH</span>
                             ) : (
                               <span className="text-green-500">LOW</span>
@@ -2400,9 +2371,9 @@ export default function Home() {
                             <div className="flex items-center justify-between">
                               <span className="text-sm">Security Score:</span>
                               <Badge variant="outline" className="text-xs">
-                                {integratedResults.urlResults?.data?.virustotal?.risk_assessment ? 
+                                {integratedResults.urlResults?.data?.virustotal?.risk_assessment ?
                                   `${integratedResults.urlResults.data.virustotal.risk_assessment.malicious_count || 0} / ${integratedResults.urlResults.data.virustotal.risk_assessment.total_engines || 0}` :
-                                  integratedResults.urlResults?.data?.virustotal?.data?.attributes?.stats ? 
+                                  integratedResults.urlResults?.data?.virustotal?.data?.attributes?.stats ?
                                     `${integratedResults.urlResults.data.virustotal.data.attributes.stats.malicious || 0} / ${integratedResults.urlResults.data.virustotal.data.attributes.stats.total || 0}` :
                                     '0 / 0'
                                 }
@@ -2444,7 +2415,7 @@ export default function Home() {
                     {loading ? "Scanning..." : "Scan IP"}
                   </Button>
                 </div>
-                
+
                 {/* Enhanced Loading State for IP Scanner */}
                 {loading && (
                   <div className="text-center py-4">
@@ -2454,22 +2425,21 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                
+
                 {ipResults && (
                   <Alert
-                    className={`bg-${
-                      ipResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${ipResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${ipResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${ipResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
-                      {isCached && (
+                            {isCached && (
                               <p className="text-sm text-muted-foreground">
-                          Showing cached results from {new Date(ipResults.timestamp || "").toLocaleString()}
-                        </p>
-                      )}
+                                Showing cached results from {new Date(ipResults.timestamp || "").toLocaleString()}
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className="text-sm text-muted-foreground">View:</span>
@@ -2557,7 +2527,7 @@ export default function Home() {
                     {loading ? "Analyzing..." : "Analyze Network Log"}
                   </Button>
                 </div>
-                
+
                 {/* Enhanced Loading State */}
                 {loading && (
                   <div className="text-center py-6">
@@ -2572,12 +2542,11 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                
+
                 {logResults && (
                   <Alert
-                    className={`bg-${
-                      logResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${logResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${logResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${logResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2589,9 +2558,8 @@ export default function Home() {
                               </p>
                             )}
                             <p
-                              className={`text-${
-                                logResults.status === "error" ? "destructive" : "primary"
-                              }`}
+                              className={`text-${logResults.status === "error" ? "destructive" : "primary"
+                                }`}
                             >
                               {logResults.message || `Analysis completed for ${selectedFile?.name}`}
                             </p>
@@ -2630,11 +2598,11 @@ export default function Home() {
               <div className="space-y-2">
                 <h2 className="text-2xl font-semibold">Advanced Security Scanners</h2>
                 <p className="text-sm text-muted-foreground">
-                  Port scanning, vulnerability assessment, and SSL/TLS analysis
+                  Port scanning and vulnerability assessment
                 </p>
               </div>
               <Separator />
-              
+
               {/* Port Scanner Section */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Port Scanner</h3>
@@ -2658,9 +2626,8 @@ export default function Home() {
                 </form>
                 {portResults && (
                   <Alert
-                    className={`bg-${
-                      portResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${portResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${portResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${portResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2724,9 +2691,8 @@ export default function Home() {
                 </form>
                 {vulnResults && (
                   <Alert
-                    className={`bg-${
-                      vulnResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${vulnResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${vulnResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${vulnResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2765,71 +2731,6 @@ export default function Home() {
                 )}
               </div>
 
-              <Separator />
-
-              {/* SSL/TLS Analyzer Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">SSL/TLS Deep Analysis</h3>
-                <form onSubmit={analyzeSSL} className="space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="text"
-                      placeholder="Enter domain for SSL analysis"
-                      value={sslDomain}
-                      onChange={(e) => setSslDomain(e.target.value)}
-                      className="bg-background/50"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={sslLoading}
-                      className="bg-primary hover:bg-primary/90"
-                    >
-                      {sslLoading ? "Analyzing..." : "Analyze SSL"}
-                    </Button>
-                  </div>
-                </form>
-                {sslResults && (
-                  <Alert
-                    className={`bg-${
-                      sslResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${sslResults.status === "error" ? "destructive" : "primary"}/20`}
-                  >
-                    <AlertDescription>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            {isCached && (
-                              <p className="text-sm text-muted-foreground">
-                                Showing cached results from {new Date(sslResults.timestamp || "").toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-muted-foreground">View:</span>
-                            <Button
-                              variant={sslViewMode === 'normal' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setSslViewMode('normal')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              Normal
-                            </Button>
-                            <Button
-                              variant={sslViewMode === 'json' ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setSslViewMode('json')}
-                              className="h-7 px-2 text-xs"
-                            >
-                              JSON
-                            </Button>
-                          </div>
-                        </div>
-                        {formatResults(sslResults, sslViewMode)}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
             </TabsContent>
 
             <TabsContent value="security" className="space-y-6">
@@ -2840,7 +2741,7 @@ export default function Home() {
                 </p>
               </div>
               <Separator />
-              
+
               {/* Security Headers Scanner */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Security Headers Scanner</h3>
@@ -2864,9 +2765,8 @@ export default function Home() {
                 </form>
                 {headerResults && (
                   <Alert
-                    className={`bg-${
-                      headerResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${headerResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${headerResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${headerResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2930,9 +2830,8 @@ export default function Home() {
                 </form>
                 {emailResults && (
                   <Alert
-                    className={`bg-${
-                      emailResults.status === "error" ? "destructive" : "primary"
-                    }/10 border-${emailResults.status === "error" ? "destructive" : "primary"}/20`}
+                    className={`bg-${emailResults.status === "error" ? "destructive" : "primary"
+                      }/10 border-${emailResults.status === "error" ? "destructive" : "primary"}/20`}
                   >
                     <AlertDescription>
                       <div className="space-y-4">
@@ -2998,11 +2897,10 @@ export default function Home() {
                     className={`mb-4 flex ${message.isUser ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[70%] rounded-lg p-3 ${
-                        message.isUser
-                          ? "bg-primary/20 text-primary-foreground"
-                          : "bg-secondary/50 text-foreground"
-                      }`}
+                      className={`max-w-[70%] rounded-lg p-3 ${message.isUser
+                        ? "bg-primary/20 text-primary-foreground"
+                        : "bg-secondary/50 text-foreground"
+                        }`}
                     >
                       {message.isUser ? (
                         <p className="text-sm">{message.text}</p>
@@ -3081,7 +2979,7 @@ export default function Home() {
                 </div>
               </DialogTitle>
             </DialogHeader>
-            
+
             {fileContent && (
               <div className="space-y-4">
                 {/* File Info */}
@@ -3103,9 +3001,9 @@ export default function Home() {
                     <p className="text-xs">{fileContent.last_modified}</p>
                   </div>
                 </div>
-                
+
                 <Separator />
-                
+
                 {/* File Content */}
                 <div>
                   <h4 className="font-medium mb-2">File Content:</h4>
