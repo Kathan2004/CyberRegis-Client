@@ -127,7 +127,7 @@ export default function Dashboard() {
         ];
         const all: ScanHistoryEntry[] = LOCAL_KEYS.flatMap(({ key, type }) =>
           loadStoredScans(key).map((s, i) => ({
-            id: i,
+            id: Date.parse(s.timestamp || new Date().toISOString()) + i,
             scan_type: type,
             target: s.input,
             status: "completed",
@@ -602,7 +602,7 @@ export default function Dashboard() {
                 {!historyLoading && historyScans.length === 0 && (
                   <tr><td colSpan={6} className="px-6 py-10 text-center text-muted-foreground text-sm">No scans yet. Run a scan above to see results here.</td></tr>
                 )}
-                {historyScans.map((scan) => {
+                {historyScans.map((scan, idx) => {
                   const SCAN_TYPE_COLORS: Record<string, string> = {
                     domain: "text-blue-400 bg-blue-400/10 border-blue-400/30",
                     ip: "text-purple-400 bg-purple-400/10 border-purple-400/30",
@@ -623,7 +623,7 @@ export default function Dashboard() {
                     : "text-green-400 bg-green-400/10 border-green-400/30";
                   const riskText = !scoreNum ? "N/A" : scoreNum >= 80 ? `${scoreNum} Critical` : scoreNum >= 60 ? `${scoreNum} High` : scoreNum >= 40 ? `${scoreNum} Medium` : `${scoreNum} Low`;
                   return (
-                    <tr key={scan.id} className="hover:bg-card/50 transition-colors">
+                    <tr key={`${scan.id}-${scan.scan_type}-${scan.target}-${scan.timestamp}-${idx}`} className="hover:bg-card/50 transition-colors">
                       <td className="px-6 py-3 font-mono text-foreground text-sm">{scan.target}</td>
                       <td className="px-6 py-3">
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${typeColor}`}>
@@ -824,6 +824,18 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
           )}
         </div>
       )}
+      {u?.risk_summary && (
+        <SectionCard title="URL Risk Summary" icon={AlertTriangle}>
+          <KV label="Overall URL Risk" value={`${u.risk_summary.overall_risk_score}/100 (${u.risk_summary.overall_risk_level})`} />
+          {u.risk_summary.factors?.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {u.risk_summary.factors.map((f: string, i: number) => (
+                <li key={`url-factor-${i}-${f.substring(0, 20)}`} className="text-xs text-muted-foreground flex gap-1"><AlertTriangle className="h-3 w-3 text-yellow-400 shrink-0 mt-0.5" />{f}</li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* WHOIS */}
@@ -844,6 +856,34 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
             {Object.entries(info.dns_records).filter(([, v]) => (v as string[])?.length > 0).map(([type, records]) => (
               <KV key={type} label={type} value={(records as string[]).join(", ")} mono />
             ))}
+            {info?.dns_matrix && (
+              <>
+                <div className="mt-2 border-t border-border pt-2" />
+                <KV label="DNS Coverage" value={`${info.dns_matrix.coverage_percent}%`} />
+                {Array.isArray(info.dns_matrix.present_types) && info.dns_matrix.present_types.length > 0 && (
+                  <KV label="Present Types" value={info.dns_matrix.present_types.join(", ")} mono />
+                )}
+                {Array.isArray(info.dns_matrix.missing_types) && info.dns_matrix.missing_types.length > 0 && (
+                  <KV label="Missing Types" value={info.dns_matrix.missing_types.join(", ")} mono />
+                )}
+              </>
+            )}
+          </SectionCard>
+        )}
+
+        {info?.shodan?.enabled && (
+          <SectionCard title="Shodan Domain Intel" icon={Globe}>
+            <KV label="Resolved IP" value={info?.shodan?.host?.ip || info?.shodan?.resolve?.[info?.domain]} mono />
+            <KV label="ASN" value={info?.shodan?.host?.asn} mono />
+            <KV label="Org" value={info?.shodan?.host?.org} />
+            <KV label="ISP" value={info?.shodan?.host?.isp} />
+            {Array.isArray(info?.shodan?.host?.ports) && info.shodan.host.ports.length > 0 && (
+              <KV label="Open Ports" value={info.shodan.host.ports.join(", ")} mono />
+            )}
+            {Array.isArray(info?.shodan?.host?.vulns) && info.shodan.host.vulns.length > 0 && (
+              <KV label="Vulns" value={info.shodan.host.vulns.join(", ")} mono />
+            )}
+            {info?.shodan?.host_error && <KV label="Status" value={`Unavailable (${info.shodan.host_error})`} />}
           </SectionCard>
         )}
 
@@ -864,8 +904,8 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
           <SectionCard title="Security Features" icon={Shield}>
             <div className="space-y-2">
               <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">DNSSEC</span><StatusBadge ok={info.security_features.dnssec} labelTrue="Enabled" labelFalse="Disabled" /></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">DMARC</span><StatusBadge ok={!!info.security_features.dmarc} labelTrue="Present" labelFalse="Missing" /></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">SPF</span><StatusBadge ok={!!info.security_features.spf} labelTrue="Present" labelFalse="Missing" /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">DMARC</span><StatusBadge ok={!!info.security_features.dmarc && info.security_features.dmarc !== "Not configured"} labelTrue="Present" labelFalse="Missing" /></div>
+              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">SPF</span><StatusBadge ok={!!info.security_features.spf && info.security_features.spf !== "Not configured"} labelTrue="Present" labelFalse="Missing" /></div>
               {info.security_features.robots_txt && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">robots.txt</span>
@@ -893,9 +933,11 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
           <SectionCard title="Geolocation" icon={Globe}>
             <KV label="IP" value={info.geolocation.ip} mono />
             <KV label="Country" value={info.geolocation.country} />
+            <KV label="Region" value={info.geolocation.region} />
             <KV label="City" value={info.geolocation.city} />
             <KV label="ISP" value={info.geolocation.isp} />
             <KV label="Organization" value={info.geolocation.organization} />
+            <KV label="Timezone" value={info.geolocation.timezone} />
           </SectionCard>
         )}
 
@@ -905,6 +947,46 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
             <div className="flex flex-wrap gap-1">
               {info.subdomains.map((s: string) => <span key={s} className="rounded-full border border-border px-2 py-0.5 text-xs font-mono text-muted-foreground">{s}</span>)}
             </div>
+          </SectionCard>
+        )}
+
+        {/* URL Behavior */}
+        {u?.additional_checks?.http_behavior && (
+          <SectionCard title="URL HTTP Behavior" icon={Activity}>
+            <KV label="Status Code" value={u.additional_checks.http_behavior.status_code} />
+            <KV label="Final URL" value={u.additional_checks.http_behavior.final_url} mono />
+            <KV label="Redirect Count" value={u.additional_checks.http_behavior.redirect_count} />
+            <KV label="Server" value={u.additional_checks.http_behavior.server} />
+            <KV label="X-Powered-By" value={u.additional_checks.http_behavior.powered_by} />
+            <KV label="Content-Type" value={u.additional_checks.http_behavior.content_type} />
+          </SectionCard>
+        )}
+
+        {/* URL TLS */}
+        {u?.additional_checks?.ssl_security && (
+          <SectionCard title="URL TLS Details" icon={Lock}>
+            <KV label="TLS Valid" value={u.additional_checks.ssl_security.valid ? "Yes" : "No"} />
+            <KV label="TLS Version" value={u.additional_checks.ssl_security.tls_version} />
+            <KV label="Cipher" value={u.additional_checks.ssl_security.cipher} />
+            <KV label="Issuer" value={u.additional_checks.ssl_security.issuer} />
+            <KV label="Subject" value={u.additional_checks.ssl_security.subject} />
+            <KV label="Expires In (days)" value={u.additional_checks.ssl_security.expires_in_days} />
+          </SectionCard>
+        )}
+
+        {u?.additional_checks?.shodan?.enabled && (
+          <SectionCard title="Shodan URL Host Intel" icon={Globe}>
+            <KV label="IP" value={u.additional_checks.shodan.ip} mono />
+            <KV label="ASN" value={u.additional_checks.shodan.asn} mono />
+            <KV label="Org" value={u.additional_checks.shodan.org} />
+            <KV label="ISP" value={u.additional_checks.shodan.isp} />
+            {Array.isArray(u.additional_checks.shodan.ports) && u.additional_checks.shodan.ports.length > 0 && (
+              <KV label="Open Ports" value={u.additional_checks.shodan.ports.join(", ")} mono />
+            )}
+            {Array.isArray(u.additional_checks.shodan.vulnerabilities) && u.additional_checks.shodan.vulnerabilities.length > 0 && (
+              <KV label="Vulnerabilities" value={u.additional_checks.shodan.vulnerabilities.join(", ")} mono />
+            )}
+            {u.additional_checks.shodan.error && <KV label="Status" value={`Unavailable (${u.additional_checks.shodan.error})`} />}
           </SectionCard>
         )}
       </div>
@@ -951,7 +1033,13 @@ function IpResultsView({ data }: { data: any }) {
   const ip = d?.ip_details || data?.ip_details;
   const risk = d?.risk_assessment || data?.risk_assessment;
   const tech = d?.technical_details || data?.technical_details;
+  const abuse = d?.abuseipdb;
   const vt = d?.virustotal;
+  const shodan = d?.shodan;
+  const vtMeta = vt?.metadata || {};
+  const vtComments = vt?.community_comments || [];
+  const abuseReports = abuse?.reports || [];
+  const riskLevel = (risk?.risk_level || "").toString().toLowerCase();
   const recs = d?.recommendations || data?.recommendations || [];
 
   if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
@@ -960,11 +1048,11 @@ function IpResultsView({ data }: { data: any }) {
     <div className="space-y-4">
       {/* Risk banner */}
       {risk && (
-        <div className={`rounded-lg border p-4 ${risk.risk_level === "high" ? "border-red-500/30 bg-red-500/5" : risk.risk_level === "medium" ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"}`}>
+        <div className={`rounded-lg border p-4 ${riskLevel === "high" ? "border-red-500/30 bg-red-500/5" : riskLevel === "medium" ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"}`}>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-muted-foreground">AbuseIPDB Risk Level</div>
-              <div className={`text-xl font-bold ${risk.risk_level === "high" ? "text-red-500" : risk.risk_level === "medium" ? "text-yellow-500" : "text-green-400"}`}>
+              <div className={`text-xl font-bold ${riskLevel === "high" ? "text-red-500" : riskLevel === "medium" ? "text-yellow-500" : "text-green-400"}`}>
                 {risk.risk_level?.toUpperCase()} — Confidence Score: {risk.confidence_score}%
               </div>
             </div>
@@ -993,22 +1081,95 @@ function IpResultsView({ data }: { data: any }) {
           <SectionCard title="Technical" icon={Server}>
             <KV label="ASN" value={tech.asn} mono />
             <KV label="AS Name" value={tech.as_name} />
+            <KV label="Organization" value={tech.organization} />
             <KV label="Usage" value={tech.usage_type} />
             <div className="flex items-center justify-between py-1"><span className="text-sm text-muted-foreground">Public IP</span><StatusBadge ok={tech.is_public} /></div>
             <div className="flex items-center justify-between py-1"><span className="text-sm text-muted-foreground">TOR Node</span><StatusBadge ok={tech.is_tor} labelTrue="Yes" labelFalse="No" /></div>
           </SectionCard>
         )}
 
+        {abuse && (
+          <SectionCard title="AbuseIPDB Details" icon={AlertTriangle}>
+            <KV label="Abuse Score" value={abuse.abuse_confidence_score} />
+            <KV label="Distinct Reporters" value={abuse.num_distinct_users} />
+            <KV label="Reports" value={abuse.total_reports} />
+            <KV label="Whitelisted" value={abuse.is_whitelisted ? "Yes" : "No"} />
+            <KV label="ASN" value={abuse.asn} mono />
+            <KV label="ASN Name" value={abuse.asn_name} />
+            <KV label="Last Reported" value={abuse.last_reported_at} />
+          </SectionCard>
+        )}
+
         {vt?.risk_assessment && (
           <SectionCard title="VirusTotal Analysis" icon={Shield}>
             <KV label="Risk Score" value={`${vt.risk_assessment.risk_score}/100`} />
-            <KV label="Risk Level" value={vt.risk_assessment.risk_level} />
+            <KV label="Risk Level" value={vt.risk_assessment.risk_level?.toUpperCase()} />
             <KV label="Malicious" value={vt.risk_assessment.malicious_count} />
             <KV label="Suspicious" value={vt.risk_assessment.suspicious_count} />
+            <KV label="Harmless" value={vt?.data?.attributes?.stats?.harmless} />
+            <KV label="Undetected" value={vt?.data?.attributes?.stats?.undetected} />
             <KV label="Detection Ratio" value={vt.risk_assessment.detection_ratio} />
+            <KV label="Reputation" value={vtMeta.reputation} />
+            <KV label="ASN" value={vtMeta.asn} mono />
+            <KV label="AS Owner" value={vtMeta.as_owner} />
+            <KV label="Network" value={vtMeta.network} mono />
+            <KV label="Country" value={vtMeta.country} />
+            <KV label="Tags" value={Array.isArray(vtMeta.tags) && vtMeta.tags.length > 0 ? vtMeta.tags.join(", ") : "—"} />
+            {vt?.error && <KV label="API Status" value={`Fallback used (${vt.error})`} />}
+          </SectionCard>
+        )}
+
+        {shodan?.enabled && (
+          <SectionCard title="Shodan Enrichment" icon={Globe}>
+            <KV label="ASN" value={shodan.asn} mono />
+            <KV label="Org" value={shodan.org} />
+            <KV label="ISP" value={shodan.isp} />
+            <KV label="Country" value={shodan.country} />
+            <KV label="City" value={shodan.city} />
+            <KV label="OS" value={shodan.os} />
+            <KV label="Open Ports" value={shodan.open_ports_count} />
+            {Array.isArray(shodan.ports) && shodan.ports.length > 0 && (
+              <KV label="Port List" value={shodan.ports.join(", ")} mono />
+            )}
+            {Array.isArray(shodan.vulnerabilities) && shodan.vulnerabilities.length > 0 && (
+              <KV label="Vulnerabilities" value={shodan.vulnerabilities.join(", ")} mono />
+            )}
+            {shodan.error && <KV label="Shodan Status" value={`Unavailable (${shodan.error})`} />}
           </SectionCard>
         )}
       </div>
+
+      {abuseReports.length > 0 && (
+        <SectionCard title="AbuseIPDB Report Comments" icon={MessageSquare}>
+          <div className="space-y-2">
+            {abuseReports.map((report: any, i: number) => (
+              <div key={`abuse-report-${i}-${report.reported_at || "na"}`} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                  <span>{report.reported_at || "Unknown time"}</span>
+                  <span>{Array.isArray(report.categories) && report.categories.length > 0 ? `Categories: ${report.categories.join(",")}` : "No categories"}</span>
+                </div>
+                <div className="text-sm text-foreground">{report.comment || "No comment text provided."}</div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {vtComments.length > 0 && (
+        <SectionCard title="VirusTotal Community Comments" icon={MessageSquare}>
+          <div className="space-y-2">
+            {vtComments.map((comment: any, i: number) => (
+              <div key={`vt-comment-${i}-${comment.id || "na"}`} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                  <span>{comment.author || "anonymous"}</span>
+                  <span>{comment.date || ""}</span>
+                </div>
+                <div className="text-sm text-foreground">{comment.text || "No comment text."}</div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {recs.length > 0 && (
         <SectionCard title="Recommendations">
@@ -1026,6 +1187,7 @@ function IpResultsView({ data }: { data: any }) {
 
 function PcapResultsView({ data }: { data: any }) {
   const d = data?.data || data;
+  const ni = d?.network_insights;
   if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
 
   return (
@@ -1050,6 +1212,73 @@ function PcapResultsView({ data }: { data: any }) {
           </SectionCard>
         )}
       </div>
+      {ni && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <SectionCard title="Traffic Summary" icon={Activity}>
+            <KV label="Total Packets" value={ni.total_packets} />
+            <KV label="Total Bytes" value={ni.total_bytes} />
+            <KV label="Capture Duration (s)" value={ni.capture_duration_seconds} />
+            <KV label="Avg Packets/sec" value={ni.avg_packets_per_second} />
+            <KV label="Packet Size Min/Avg/Max" value={`${ni?.packet_size_stats?.min || 0} / ${ni?.packet_size_stats?.avg || 0} / ${ni?.packet_size_stats?.max || 0}`} />
+          </SectionCard>
+          <SectionCard title="TCP Flag Profile" icon={BarChart3}>
+            <KV label="SYN" value={ni?.tcp_flags?.syn ?? 0} />
+            <KV label="ACK" value={ni?.tcp_flags?.ack ?? 0} />
+            <KV label="RST" value={ni?.tcp_flags?.rst ?? 0} />
+            <KV label="FIN" value={ni?.tcp_flags?.fin ?? 0} />
+            <KV label="PSH" value={ni?.tcp_flags?.psh ?? 0} />
+            <KV label="URG" value={ni?.tcp_flags?.urg ?? 0} />
+          </SectionCard>
+        </div>
+      )}
+      {ni?.top_source_ips?.length > 0 && (
+        <SectionCard title="Top Source IPs" icon={Network}>
+          <div className="space-y-1">
+            {ni.top_source_ips.map((item: any, i: number) => (
+              <div key={`srcip-${i}-${item.ip}`} className="flex items-center justify-between text-sm">
+                <span className="font-mono text-foreground">{item.ip}</span>
+                <span className="text-muted-foreground">{item.count} pkts ({item.percentage}%)</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+      {ni?.top_destination_ips?.length > 0 && (
+        <SectionCard title="Top Destination IPs" icon={Network}>
+          <div className="space-y-1">
+            {ni.top_destination_ips.map((item: any, i: number) => (
+              <div key={`dstip-${i}-${item.ip}`} className="flex items-center justify-between text-sm">
+                <span className="font-mono text-foreground">{item.ip}</span>
+                <span className="text-muted-foreground">{item.count} pkts ({item.percentage}%)</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+      {ni?.top_ports?.length > 0 && (
+        <SectionCard title="Top Destination Ports" icon={Server}>
+          <div className="space-y-1">
+            {ni.top_ports.map((item: any, i: number) => (
+              <div key={`portdist-${i}-${item.port}-${item.protocol}`} className="flex items-center justify-between text-sm">
+                <span className="font-mono text-foreground">{item.port}/{item.protocol}</span>
+                <span className="text-muted-foreground">{item.count} pkts ({item.percentage}%)</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+      {ni?.top_flows?.length > 0 && (
+        <SectionCard title="Top Flows" icon={TrendingUp}>
+          <div className="space-y-1">
+            {ni.top_flows.slice(0, 8).map((flow: any, i: number) => (
+              <div key={`flow-${i}-${flow.flow.substring(0, 32)}`} className="flex items-center justify-between text-xs">
+                <span className="font-mono text-foreground truncate pr-4">{flow.flow}</span>
+                <span className="text-muted-foreground">{flow.packets}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
       {d?.chart_base64 && (
         <SectionCard title="Protocol Chart">
           <img src={`data:image/png;base64,${d.chart_base64}`} alt="Protocol Chart" className="max-w-full rounded-lg" />
@@ -1127,6 +1356,38 @@ function PortResultsView({ data }: { data: any }) {
         <SectionCard title="Risk Summary" icon={AlertTriangle}>
           <KV label="Open Ports" value={d.risk_summary.open_ports} />
           <KV label="High Risk Ports" value={highRiskPorts.length > 0 ? highRiskPorts.join(", ") : "None"} />
+          {d.risk_summary.attack_surface_score !== undefined && (
+            <KV label="Attack Surface Score" value={`${d.risk_summary.attack_surface_score}/100`} />
+          )}
+          {d.risk_summary.risk_level && <KV label="Risk Level" value={d.risk_summary.risk_level} />}
+          {Array.isArray(d.risk_summary.top_services) && d.risk_summary.top_services.length > 0 && (
+            <div className="pt-2">
+              <div className="text-xs text-muted-foreground mb-1">Top Services</div>
+              <div className="space-y-1">
+                {d.risk_summary.top_services.map((s: any, i: number) => (
+                  <div key={`topsvc-${i}-${s.service}`} className="flex items-center justify-between text-xs">
+                    <span className="text-foreground">{s.service}</span>
+                    <span className="text-muted-foreground">{s.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      )}
+      {d?.shodan?.enabled && (
+        <SectionCard title="Shodan Exposure Intel" icon={Globe}>
+          <KV label="IP" value={d.shodan.ip} mono />
+          <KV label="ASN" value={d.shodan.asn} mono />
+          <KV label="Org" value={d.shodan.org} />
+          <KV label="ISP" value={d.shodan.isp} />
+          {Array.isArray(d.shodan.ports) && d.shodan.ports.length > 0 && (
+            <KV label="Indexed Ports" value={d.shodan.ports.join(", ")} mono />
+          )}
+          {Array.isArray(d.shodan.vulnerabilities) && d.shodan.vulnerabilities.length > 0 && (
+            <KV label="Indexed CVEs" value={d.shodan.vulnerabilities.join(", ")} mono />
+          )}
+          {d.shodan.error && <KV label="Status" value={`Unavailable (${d.shodan.error})`} />}
         </SectionCard>
       )}
     </div>
@@ -1155,6 +1416,9 @@ function VulnResultsView({ data }: { data: any }) {
               <span className="text-blue-400">Low: {d.risk_summary.low_severity || 0}</span>
             </div>
           </div>
+          {d.risk_summary.max_risk_score !== undefined && (
+            <div className="mt-2 text-xs text-muted-foreground">Max Risk Score: {d.risk_summary.max_risk_score}/100</div>
+          )}
         </div>
       )}
       {vulns.map((v: any, i: number) => (
@@ -1164,12 +1428,29 @@ function VulnResultsView({ data }: { data: any }) {
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${v.severity === "high" ? "text-red-400 border-red-400/30 bg-red-400/10" : v.severity === "medium" ? "text-yellow-400 border-yellow-400/30 bg-yellow-400/10" : "text-blue-400 border-blue-400/30 bg-blue-400/10"}`}>{v.severity}</span>
           </div>
           {v.version && <div className="text-xs text-muted-foreground mb-1">Version: {v.version}</div>}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-1">
+            {v.risk_score !== undefined && <span>Risk: {v.risk_score}/100</span>}
+            {v.confidence && <span>Confidence: {v.confidence}</span>}
+            {v.remediation_priority !== undefined && <span>Priority: P{v.remediation_priority}</span>}
+          </div>
           {v.potential_issues?.length > 0 && (
             <ul className="mt-2 space-y-1">{v.potential_issues.map((issue: string, j: number) => <li key={`issue-${i}-${j}-${issue.substring(0, 20)}`} className="text-xs text-muted-foreground flex gap-1"><AlertTriangle className="h-3 w-3 text-yellow-400 shrink-0 mt-0.5" />{issue}</li>)}</ul>
+          )}
+          {v.cve_examples?.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground">Examples: {v.cve_examples.join(", ")}</div>
           )}
           {v.recommendation && <div className="mt-2 text-xs text-primary">{v.recommendation}</div>}
         </div>
       ))}
+      {d?.risk_summary?.prioritized_actions?.length > 0 && (
+        <SectionCard title="Prioritized Actions" icon={CheckCircle}>
+          <ul className="space-y-1">
+            {d.risk_summary.prioritized_actions.map((action: string, i: number) => (
+              <li key={`action-${i}-${action.substring(0, 20)}`} className="text-sm text-muted-foreground">• {action}</li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
     </div>
   );
 }
@@ -1182,6 +1463,9 @@ function HeaderResultsView({ data }: { data: any }) {
   const score = d?.security_score ?? data?.security_score;
   const maxScore = d?.max_score ?? data?.max_score;
   const grade = d?.grade || data?.grade;
+  const hardening = d?.hardening_summary || data?.hardening_summary;
+  const criticalMissing = d?.critical_missing_headers || data?.critical_missing_headers || [];
+  const responseInfo = d?.response_info || data?.response_info;
   if (data?.status === "error") return <div className="text-sm text-red-400">{data.message}</div>;
 
   return (
@@ -1199,6 +1483,24 @@ function HeaderResultsView({ data }: { data: any }) {
           )}
         </div>
       )}
+      {responseInfo && (
+        <SectionCard title="Response Behavior" icon={Activity}>
+          <KV label="Final URL" value={responseInfo.final_url} mono />
+          <KV label="HTTP Status" value={responseInfo.status_code} />
+          <KV label="Redirect Count" value={responseInfo.redirect_count} />
+          <KV label="Server" value={responseInfo.server} />
+          <KV label="X-Powered-By" value={responseInfo.powered_by} />
+        </SectionCard>
+      )}
+      {criticalMissing.length > 0 && (
+        <SectionCard title="Critical Missing Headers" icon={AlertTriangle}>
+          <div className="flex flex-wrap gap-1">
+            {criticalMissing.map((h: string, i: number) => (
+              <span key={`crit-h-${i}-${h}`} className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-xs text-red-400">{h}</span>
+            ))}
+          </div>
+        </SectionCard>
+      )}
       {headers && Object.entries(headers).map(([name, info]: [string, any]) => (
         <div key={name} className="flex items-center justify-between rounded-lg border border-border p-3">
           <div>
@@ -1211,6 +1513,20 @@ function HeaderResultsView({ data }: { data: any }) {
           </div>
         </div>
       ))}
+      {hardening?.prioritized_remediation?.length > 0 && (
+        <SectionCard title="Prioritized Remediation" icon={CheckCircle}>
+          <ul className="space-y-2">
+            {hardening.prioritized_remediation.map((r: any, i: number) => (
+              <li key={`hdr-fix-${i}-${r.header}`} className="text-sm text-muted-foreground">
+                <span className="text-foreground font-medium">{r.header}</span>
+                {" — "}
+                {r.recommendation}
+                {r.severity && <span className="ml-2 text-xs">({r.severity})</span>}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
     </div>
   );
 }

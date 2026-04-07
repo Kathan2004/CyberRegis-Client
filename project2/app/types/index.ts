@@ -34,6 +34,12 @@ export interface DomainInfo {
   domain: string;
   whois: Record<string, string>;
   dns_records: Record<string, string[]>;
+  dns_matrix?: {
+    queried_types: string[];
+    present_types: string[];
+    missing_types: string[];
+    coverage_percent: number;
+  };
   ssl_info: {
     issuer?: string;
     subject?: string;
@@ -47,6 +53,16 @@ export interface DomainInfo {
   subdomains: string[];
   geolocation: Record<string, string>;
   technology?: Record<string, string>;
+  shodan?: {
+    enabled: boolean;
+    dns?: Record<string, unknown>;
+    resolve?: Record<string, string>;
+    host?: { ip?: string; org?: string; isp?: string; asn?: string; ports?: number[]; vulns?: string[]; last_update?: string };
+    dns_error?: string;
+    resolve_error?: string;
+    host_error?: string;
+    error?: string;
+  };
 }
 
 export interface SecurityFeatures {
@@ -94,6 +110,23 @@ export interface IpAnalysis {
     organization: string;
   };
   virustotal: VirusTotalResult;
+  shodan?: {
+    enabled: boolean;
+    error?: string;
+    ip?: string;
+    org?: string;
+    isp?: string;
+    asn?: string;
+    country?: string;
+    city?: string;
+    os?: string;
+    ports?: number[];
+    open_ports_count?: number;
+    hostnames?: string[];
+    tags?: string[];
+    vulnerabilities?: string[];
+    last_update?: string;
+  };
   virustotal_summary: string;
   recommendations: string[];
   scan_duration_ms: number;
@@ -129,11 +162,14 @@ export interface UrlAnalysis {
     google_safe_browsing: { status: string; response_code?: number };
   };
   additional_checks: {
-    ssl_security: { valid: boolean; error?: string };
-    suspicious_patterns: { found: boolean; matches: string[]; risk_level: string };
+    ssl_security: { valid: boolean; error?: string; tls_version?: string; cipher?: string; issuer?: string; subject?: string; expires_in_days?: number };
+    suspicious_patterns: { found: boolean; matches: string[]; risk_level: string; risk_score?: number; flags?: Record<string, boolean> };
     domain_analysis: { risk_score: number; risk_level: string; risk_factors: string[]; whois: Record<string, unknown> };
+    http_behavior?: { status_code?: number; final_url?: string; redirect_count?: number; redirect_chain?: string[]; server?: string; powered_by?: string; content_type?: string; hsts_present?: boolean; set_cookie_count?: number; error?: string };
+    shodan?: { enabled: boolean; error?: string; ip?: string; org?: string; isp?: string; asn?: string; ports?: number[]; tags?: string[]; vulnerabilities?: string[]; last_update?: string };
   };
-  recommendations: string[];
+  risk_summary?: { overall_risk_score: number; overall_risk_level: string; factors: string[] };
+  recommendations: Array<string | { category: string; severity: string; text: string }>;
 }
 
 // ─── PCAP / Network ─────────────────────────────────────────
@@ -143,6 +179,20 @@ export interface PcapAnalysis {
   pcap_analysis: Record<string, number>;
   chart_base64: string;
   protocol_summary?: { total_packets: number; unique_protocols: number; top_protocols: { name: string; count: number; percentage: number }[] };
+  network_insights?: {
+    total_packets: number;
+    total_bytes: number;
+    capture_duration_seconds: number;
+    avg_packets_per_second: number;
+    packet_size_stats: { min: number; max: number; avg: number };
+    top_source_ips: { ip: string; count: number; percentage: number }[];
+    top_destination_ips: { ip: string; count: number; percentage: number }[];
+    top_ports: { port: number; protocol: string; count: number; percentage: number }[];
+    top_flows: { flow: string; packets: number }[];
+    tcp_flags: { syn: number; ack: number; fin: number; rst: number; psh: number; urg: number };
+  };
+  suspicious_ips?: string[];
+  potential_threats?: { type: string; severity: string; details?: string }[];
   scan_duration_ms: number;
 }
 
@@ -154,7 +204,16 @@ export interface PortScanResult {
   ports: PortInfo[];
   total_ports: number;
   scan_type: string;
-  risk_summary: { open_ports: number; high_risk_ports: number; risk_level: string };
+  risk_summary: {
+    open_ports: number;
+    high_risk_ports: number;
+    risk_level: string;
+    attack_surface_score?: number;
+    top_services?: { service: string; count: number }[];
+    high_risk_port_details?: { port: number; service: string; reason: string }[];
+    recommendations?: string[];
+  };
+  shodan?: { enabled: boolean; error?: string; ip?: string; org?: string; isp?: string; asn?: string; ports?: number[]; vulnerabilities?: string[]; last_update?: string };
   scan_duration_ms: number;
 }
 
@@ -184,16 +243,28 @@ export interface VulnerabilityInfo {
   potential_issues: string[];
   severity: string;
   recommendation: string;
+  confidence?: string;
+  cve_examples?: string[];
+  remediation_priority?: number;
+  risk_score?: number;
 }
 
 // ─── Security Headers ────────────────────────────────────────
 export interface SecurityHeadersResult {
   status: string;
   url: string;
-  headers: Record<string, { present: boolean; value: string; score: number }>;
+  headers: Record<string, { present: boolean; value: string; score: number; max_score?: number; severity_if_missing?: string; recommendation?: string }>;
   security_score: number;
   max_score: number;
   grade: string;
+  response_info?: { final_url?: string; status_code?: number; redirect_count?: number; server?: string; powered_by?: string };
+  missing_headers?: string[];
+  critical_missing_headers?: string[];
+  hardening_summary?: {
+    strengths?: string[];
+    gaps?: string[];
+    prioritized_remediation?: { header: string; severity: string; recommendation: string }[];
+  };
   scan_duration_ms: number;
 }
 
