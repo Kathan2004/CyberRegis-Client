@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Project Development and Completion Tracker – LYCSF111</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; background: #fff; color: #222; }
+  h1.main-title {
+    background: #1a3c5e; color: #fff;
+    text-align: center; padding: 10px 6px;
+    font-size: 16px; letter-spacing: 0.5px;
+  }
+  .section-title {
+    background: #2e75b6; color: #fff;
+    padding: 5px 8px; font-size: 12px; font-weight: bold;
+    margin-top: 14px; margin-bottom: 4px;
+  }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  th {
+    background: #2e75b6; color: #fff;
+    padding: 5px 6px; text-align: left; font-size: 10px;
+    border: 1px solid #1a5894;
+  }
+  td {
+    padding: 4px 6px; border: 1px solid #b8cfe4;
+    vertical-align: middle;
+  }
+  tr:nth-child(even) td { background: #dce6f1; }
+  tr:nth-child(odd) td { background: #fff; }
+
+  /* Status badges */
+  .badge-complete { background: #c6efce; color: #276221; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+  .badge-inprog  { background: #ffeb9c; color: #9c6500; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+
+  /* Person colour coding */
+  .kathan  { color: #1a3c5e; font-weight: bold; }
+  .dev     { color: #375623; font-weight: bold; }
+  .aryan   { color: #7030a0; font-weight: bold; }
+  .darshan { color: #c55a11; font-weight: bold; }
+
+  /* Sprint header rows */
+  .sprint-header td {
+    background: #1a3c5e !important; color: #fff;
+    font-weight: bold; font-size: 11px;
+  }
+  .sprint-label { background: #2e75b6 !important; color: #fff; font-weight: bold; }
+
+  /* Meta info grid */
+  .meta-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-bottom: 10px; }
+  .meta-cell { border: 1px solid #b8cfe4; padding: 5px 8px; }
+  .meta-cell .label { font-size: 9px; color: #666; text-transform: uppercase; }
+  .meta-cell .value { font-size: 11px; font-weight: bold; color: #1a3c5e; margin-top: 2px; }
+
+  .team-table th { background: #1a3c5e; }
+
+  .warn-note {
+    background: #fff2cc; border: 1px solid #f4b942;
+    padding: 6px 10px; font-size: 10px; font-weight: bold;
+    color: #7a4f00; margin: 8px 0;
+  }
+
+  .legend { display: flex; gap: 16px; margin: 8px 0; font-size: 10px; }
+  .leg { display: flex; align-items: center; gap: 5px; }
+  .leg-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  .pct-100 { color: #276221; font-weight: bold; }
+
+  @media print {
+    body { font-size: 9px; }
+    h1.main-title { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<h1 class="main-title">Project Development and Completion Tracker</h1>
+
+<!-- ── Project Meta ── -->
+<div style="padding:8px;">
+
+<div class="meta-grid" style="grid-template-columns:repeat(5,1fr)">
+  <div class="meta-cell"><div class="label">Project ID</div><div class="value">LYCSF111</div></div>
+  <div class="meta-cell"><div class="label">Class</div><div class="value">LY CSF 1</div></div>
+  <div class="meta-cell"><div class="label">% Completion</div><div class="value">100%</div></div>
+  <div class="meta-cell"><div class="label">Copyright Status</div><div class="value">NA</div></div>
+  <div class="meta-cell"><div class="label">Paper Publication</div><div class="value">Submitted</div></div>
+</div>
+
+<div class="meta-grid" style="grid-template-columns:1fr 1fr;margin-top:6px;">
+  <div class="meta-cell" style="grid-column:1/3">
+    <div class="label">Problem Statement</div>
+    <div class="value" style="font-size:12px;">
+      CyberRegis: A Unified Platform for Real-Time Cyber Threat Detection, Intelligence, and Automated Response
+    </div>
+  </div>
+</div>
+
+<div class="meta-grid" style="grid-template-columns:repeat(4,1fr);margin-top:6px;">
+  <div class="meta-cell"><div class="label">Meeting Count</div><div class="value">12</div></div>
+  <div class="meta-cell"><div class="label">Project Guide</div><div class="value">Prof. Smita Gumaste</div></div>
+  <div class="meta-cell"><div class="label">Project Domain</div><div class="value">Cyber Awareness</div></div>
+  <div class="meta-cell"><div class="label">Source</div><div class="value">Student Innovation</div></div>
+</div>
+
+<!-- ── Team ── -->
+<div class="section-title">Project Development Student Team Members</div>
+<table class="team-table">
+  <thead>
+    <tr>
+      <th>Enrollment Number</th>
+      <th>Name of Student</th>
+      <th>Class</th>
+      <th>Contact Number</th>
+      <th>Email ID</th>
+      <th>Primary Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MITU22BTCS0379</td>
+      <td class="kathan">KATHAN NIRAV SOMANI</td>
+      <td>LY-CSF-1</td>
+      <td>9574943784</td>
+      <td>kathansomani9875@gmail.com</td>
+      <td><strong>Lead Developer – Full-Stack, AI/ML & Backend Architecture</strong></td>
+    </tr>
+    <tr>
+      <td>MITU22BTCS0247</td>
+      <td class="dev">DEV BHAVESH SAGANI</td>
+      <td>LY-CSF-1</td>
+      <td>8999965114</td>
+      <td>devsagani19@gmail.com</td>
+      <td>Backend Developer – APIs & Algorithm Engineering</td>
+    </tr>
+    <tr>
+      <td>MITU22BTCS0160</td>
+      <td class="aryan">ARYAN DSOUZA</td>
+      <td>LY-CSF-1</td>
+      <td>9011010654</td>
+      <td>aryan.dsouza140921@gmail.com</td>
+      <td>Frontend Developer – UI Components & Pages</td>
+    </tr>
+    <tr>
+      <td>MITU22BTCS0238</td>
+      <td class="darshan">DARSHAN DNYANESHWAR DORIK</td>
+      <td>LY-CSF-1</td>
+      <td>9913352582</td>
+      <td>dorikdarshan2004@gmail.com</td>
+      <td>Frontend Developer – Dashboard, Mobile & Visualization</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ── Tech Stack ── -->
+<div class="section-title">Technology Stack</div>
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th><th>Technology 1</th><th>Technology 2</th><th>Technology 3</th><th>Technology 4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Front-end (Client-side)</td><td>Next.js 14 (TypeScript)</td><td>Tailwind CSS</td><td>shadcn/ui</td><td>Recharts / Lucide</td></tr>
+    <tr><td>Back-end (Server-side)</td><td>Python Flask</td><td>REST API</td><td>Flask-Limiter</td><td>Flask-Caching</td></tr>
+    <tr><td>Database Layer</td><td>PostgreSQL</td><td>SQLite (local)</td><td>–</td><td>–</td></tr>
+    <tr><td>AI / ML</td><td>Google Gemini API</td><td>NLP Threat Context</td><td>–</td><td>–</td></tr>
+    <tr><td>External APIs</td><td>VirusTotal</td><td>AbuseIPDB / Shodan</td><td>HIBP / NVD CVE</td><td>MITRE ATT&CK</td></tr>
+    <tr><td>Alerting</td><td>Telegram Bot API</td><td>–</td><td>–</td><td>–</td></tr>
+    <tr><td>Dev Tools</td><td>VS Code</td><td>Google Cloud Console</td><td>Next Dev Server</td><td>Postman</td></tr>
+    <tr><td>Deployment</td><td>Netlify (Web)</td><td>Expo (Mobile)</td><td>–</td><td>–</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Epics / Stories ── -->
+<div class="section-title">Epic – Stories &amp; Tasks</div>
+<table>
+  <tbody>
+    <tr><td><strong>Story 1:</strong> As an analyst, I want a dashboard displaying real-time threat analysis and insights.</td></tr>
+    <tr><td><strong>Story 2:</strong> As a user, I want access to external security data (VirusTotal, Shodan, HIBP, AbuseIPDB, NVD, Shodan).</td></tr>
+    <tr><td><strong>Story 3:</strong> As a security team member, I want automated threat detection to reduce manual effort.</td></tr>
+    <tr><td><strong>Story 4:</strong> As an investigator, I want a real-time alert system via Telegram.</td></tr>
+    <tr><td><strong>Story 5:</strong> As a user, I want AI-powered guidance on cybersecurity threats and remediation via a chatbot.</td></tr>
+    <tr><td><strong>Story 6:</strong> As an analyst, I want PCAP network traffic analysis to detect protocol anomalies.</td></tr>
+    <tr><td><strong>Story 7:</strong> As a developer, I want CVE lookup and MITRE ATT&amp;CK mapping for vulnerability context.</td></tr>
+    <tr><td><strong>Story 8:</strong> As a security engineer, I want email security and HTTP headers analysis to audit configurations.</td></tr>
+    <tr><td><strong>Story 9:</strong> As a team lead, I want generated reports and a monitoring dashboard for system-wide visibility.</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Acceptance Criteria ── -->
+<div class="section-title">Acceptance Criteria</div>
+<table>
+  <tbody>
+    <tr><td>1</td><td>Integrated APIs (VirusTotal, AbuseIPDB, HIBP, Shodan, NVD) provide real-time threat intelligence.</td></tr>
+    <tr><td>2</td><td>Users receive actionable security recommendations based on multi-source threat data.</td></tr>
+    <tr><td>3</td><td>The dashboard provides a real-time view of ongoing cyber threats, scans, and incidents.</td></tr>
+    <tr><td>4</td><td>PCAP files are parsed and network anomalies are flagged automatically.</td></tr>
+    <tr><td>5</td><td>CVE lookup and MITRE ATT&amp;CK framework integration surface vulnerability context.</td></tr>
+    <tr><td>6</td><td>Email security records (DMARC/SPF/DKIM) and HTTP security headers are analysed and scored.</td></tr>
+    <tr><td>7</td><td>AI chatbot (Gemini) answers cybersecurity questions with domain-aware context.</td></tr>
+    <tr><td>8</td><td>Users receive immediate critical-threat alerts via the Telegram Bot API.</td></tr>
+    <tr><td>9</td><td>Security reports are auto-generated; monitoring dashboard tracks system health metrics.</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Legend ── -->
+<div class="legend">
+  <div class="leg"><div class="leg-dot" style="background:#1a3c5e"></div><strong>Kathan</strong> – Lead Developer</div>
+  <div class="leg"><div class="leg-dot" style="background:#375623"></div><strong>Dev</strong> – Backend / APIs</div>
+  <div class="leg"><div class="leg-dot" style="background:#7030a0"></div><strong>Aryan</strong> – Frontend UI</div>
+  <div class="leg"><div class="leg-dot" style="background:#c55a11"></div><strong>Darshan</strong> – Dashboard / Mobile / Visualisation</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SPRINT TABLE
+════════════════════════════════════════════════════════════ -->
+<div class="section-title" style="margin-top:14px;">Sprint Task Tracker</div>
+
+<table id="sprint-table">
+  <thead>
+    <tr>
+      <th style="width:90px">Sprint No.</th>
+      <th style="width:200px">Task Name</th>
+      <th style="width:210px">Sub Tasks</th>
+      <th style="width:80px">Task Status</th>
+      <th style="width:110px">Assigned To</th>
+      <th style="width:80px">Assigned Date</th>
+      <th style="width:80px">Deadline</th>
+      <th style="width:80px">Start Date</th>
+      <th style="width:90px">Completion Date</th>
+      <th style="width:70px">Completion %</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    <!-- ═══ SPRINT 1 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 1<br/><small>18 Aug 2025<br/>→ 29 Aug 2025</small></td>
+      <td rowspan="2">Design Threat Intelligence Dashboard (Web)</td>
+      <td>Design dashboard layout, KPI cards &amp; navigation</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-08-18</td><td>2025-08-29</td><td>2025-08-18</td><td>2025-08-29</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Integrate Recharts / charts library; optimize for mobile viewport</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-08-18</td><td>2025-08-29</td><td>2025-08-18</td><td>2025-08-29</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Implement Backend Logic for Automated Threat Detection</td>
+      <td>Code threat detection algorithms and classification rules</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-08-18</td><td>2025-08-29</td><td>2025-08-18</td><td>2025-08-29</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Set up alert generation system &amp; Flask app architecture</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-08-18</td><td>2025-08-29</td><td>2025-08-18</td><td>2025-08-29</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 2 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 2<br/><small>1 Sep 2025<br/>→ 14 Sep 2025</small></td>
+      <td rowspan="2">Build Backend APIs for Threat Intelligence Dashboard</td>
+      <td>Define API request-response structure &amp; Blueprint modules</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-09-01</td><td>2025-09-14</td><td>2025-09-01</td><td>2025-09-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Test and optimize API latency, error handling &amp; rate limiting</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-09-01</td><td>2025-09-14</td><td>2025-09-01</td><td>2025-09-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Create UI for Logging Detected Threats</td>
+      <td>Design threat logging form (inputs, data tables, filters)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2025-09-01</td><td>2025-09-14</td><td>2025-09-01</td><td>2025-09-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Connect threat log UI to backend API; handle pagination</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2025-09-01</td><td>2025-09-14</td><td>2025-09-01</td><td>2025-09-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 3 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 3<br/><small>22 Sep 2025<br/>→ 5 Oct 2025</small></td>
+      <td rowspan="2">Create UI for Logging Detected Threats (Mobile)</td>
+      <td>Develop threat log input form in mobile UI (React Native)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-09-22</td><td>2025-10-05</td><td>2025-09-22</td><td>2025-10-05</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Connect mobile form to backend API &amp; test end-to-end</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-09-22</td><td>2025-10-05</td><td>2025-09-22</td><td>2025-10-05</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Integrate Security APIs (VirusTotal, AbuseIPDB, Google Safe Search, HIBP)</td>
+      <td>Handle response parsing, error cases &amp; fallback strategies</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-09-22</td><td>2025-10-05</td><td>2025-09-22</td><td>2025-10-05</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Set up connections to all external security APIs; manage API keys</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-09-22</td><td>2025-10-05</td><td>2025-09-22</td><td>2025-10-05</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 4 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 4<br/><small>6 Oct 2025<br/>→ 17 Oct 2025</small></td>
+      <td rowspan="2">Develop AI-Driven Threat Scoring and Anomaly Detection</td>
+      <td>Create threat scoring model, risk-level classification logic</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-10-06</td><td>2025-10-17</td><td>2025-10-06</td><td>2025-10-17</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Implement anomaly detection system &amp; threshold tuning</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-10-06</td><td>2025-10-17</td><td>2025-10-06</td><td>2025-10-17</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Implement Real-Time Alerts via Telegram Bot API</td>
+      <td>Create Telegram Bot integration &amp; message formatting</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-10-06</td><td>2025-10-17</td><td>2025-10-06</td><td>2025-10-17</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Send threat alerts automatically for critical/high events</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2025-10-06</td><td>2025-10-17</td><td>2025-10-06</td><td>2025-10-17</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 5 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 5<br/><small>20 Oct 2025<br/>→ 2 Nov 2025</small></td>
+      <td rowspan="3">Implement Domain Analysis System</td>
+      <td>Build domain analysis backend: DNS records, WHOIS, reputation scoring</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-10-20</td><td>2025-11-02</td><td>2025-10-20</td><td>2025-11-02</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Integrate VirusTotal domain scanning &amp; URL malware detection endpoint</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-10-20</td><td>2025-11-02</td><td>2025-10-20</td><td>2025-11-02</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Build URL analysis route (url_routes.py) and service layer</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-10-20</td><td>2025-11-02</td><td>2025-10-20</td><td>2025-11-02</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Develop Domain Analysis &amp; URL Scanner Frontend UI</td>
+      <td>Create domain/URL scan tab in dashboard UI with results display</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2025-10-20</td><td>2025-11-02</td><td>2025-10-20</td><td>2025-11-02</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 6 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 6<br/><small>3 Nov 2025<br/>→ 16 Nov 2025</small></td>
+      <td rowspan="3">Build IP Reputation Analysis &amp; Shodan Integration</td>
+      <td>Build IP reputation service (ip_service.py) – multi-source aggregation</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-11-03</td><td>2025-11-16</td><td>2025-11-03</td><td>2025-11-16</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Integrate Shodan API (shodan_service.py) for open-port &amp; banner intelligence</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-11-03</td><td>2025-11-16</td><td>2025-11-03</td><td>2025-11-16</td>
+      <td class="pct-100">100%</td>
+    </tr>
+      <tr>
+      <td>Implement AbuseIPDB &amp; GreyNoise API calls; normalize response schema</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-11-03</td><td>2025-11-16</td><td>2025-11-03</td><td>2025-11-16</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Create IP Analysis Frontend Dashboard</td>
+      <td>Build IP scan tab: input, risk badge, geo info, open-port table</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-11-03</td><td>2025-11-16</td><td>2025-11-03</td><td>2025-11-16</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 7 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 7<br/><small>17 Nov 2025<br/>→ 30 Nov 2025</small></td>
+      <td rowspan="3">Implement PCAP Network Traffic Analysis Engine</td>
+      <td>Build PCAP file upload endpoint &amp; scapy-based packet parser (pcap_routes.py)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-11-17</td><td>2025-11-30</td><td>2025-11-17</td><td>2025-11-30</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Build protocol analysis engine &amp; network anomaly flagging logic</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-11-17</td><td>2025-11-30</td><td>2025-11-17</td><td>2025-11-30</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Implement secure file-upload handling &amp; multi-format PCAP support</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-11-17</td><td>2025-11-30</td><td>2025-11-17</td><td>2025-11-30</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Create PCAP Upload &amp; Results UI</td>
+      <td>Build PCAP scan tab: drag-and-drop upload, protocol breakdown, anomaly list</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-11-17</td><td>2025-11-30</td><td>2025-11-17</td><td>2025-11-30</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 8 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 8<br/><small>1 Dec 2025<br/>→ 14 Dec 2025</small></td>
+      <td rowspan="3">CVE Database Search &amp; MITRE ATT&amp;CK Integration</td>
+      <td>Integrate NIST NVD API (cve_service.py) – fetch, parse &amp; cache CVEs</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-12-01</td><td>2025-12-14</td><td>2025-12-01</td><td>2025-12-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Implement MITRE ATT&amp;CK framework mapping (mitre_service.py) &amp; tactic lookups</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-12-01</td><td>2025-12-14</td><td>2025-12-01</td><td>2025-12-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Build CVE severity scoring, CVSS filtering &amp; keyword search logic</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-12-01</td><td>2025-12-14</td><td>2025-12-01</td><td>2025-12-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Design CVE &amp; MITRE Pages</td>
+      <td>Create cve/page.tsx with search, severity badges, MITRE tactic display</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2025-12-01</td><td>2025-12-14</td><td>2025-12-01</td><td>2025-12-14</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 9 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 9<br/><small>15 Dec 2025<br/>→ 28 Dec 2025</small></td>
+      <td rowspan="2">Email Security Analysis &amp; HTTP Security Headers Checker</td>
+      <td>Implement DMARC / SPF / DKIM DNS-record analysis backend</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2025-12-15</td><td>2025-12-28</td><td>2025-12-15</td><td>2025-12-28</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Build security headers checker (CSP, HSTS, X-Frame, etc.) &amp; OWASP scoring</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2025-12-15</td><td>2025-12-28</td><td>2025-12-15</td><td>2025-12-28</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Port Scanner &amp; Vulnerability Assessment</td>
+      <td>Implement multi-threaded port scanner &amp; service fingerprinting</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2025-12-15</td><td>2025-12-28</td><td>2025-12-15</td><td>2025-12-28</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Create Port Scan, Email &amp; Security Headers UI tabs in dashboard</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2025-12-15</td><td>2025-12-28</td><td>2025-12-15</td><td>2025-12-28</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 10 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 10<br/><small>5 Jan 2026<br/>→ 18 Jan 2026</small></td>
+      <td rowspan="3">Develop AI Cybersecurity Chatbot (Gemini Integration)</td>
+      <td>Integrate Google Gemini API (gemini_service.py) with cybersecurity system prompt</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2026-01-05</td><td>2026-01-18</td><td>2026-01-05</td><td>2026-01-18</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Build NLP-aware threat context engine; chat history &amp; streaming support</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2026-01-05</td><td>2026-01-18</td><td>2026-01-05</td><td>2026-01-18</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Create /api/chat route (chat_routes.py) with rate limiting (10/min)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2026-01-05</td><td>2026-01-18</td><td>2026-01-05</td><td>2026-01-18</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Develop Chatbot UI Component</td>
+      <td>Build Chatbot.tsx – floating chat panel, markdown rendering, message history</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2026-01-05</td><td>2026-01-18</td><td>2026-01-05</td><td>2026-01-18</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 11 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="4" class="sprint-label">Sprint 11<br/><small>19 Jan 2026<br/>→ 1 Feb 2026</small></td>
+      <td rowspan="2">Monitoring Dashboard &amp; Security Report Generation</td>
+      <td>Build real-time monitoring backend (monitoring_routes.py) – system health metrics</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2026-01-19</td><td>2026-02-01</td><td>2026-01-19</td><td>2026-02-01</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Implement security report generation (reports_routes.py) – JSON &amp; structured export</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2026-01-19</td><td>2026-02-01</td><td>2026-01-19</td><td>2026-02-01</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Threat Intelligence Feeds &amp; IOC Management</td>
+      <td>Integrate threat intelligence feed aggregation (threat_feed_service.py)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2026-01-19</td><td>2026-02-01</td><td>2026-01-19</td><td>2026-02-01</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Create Monitoring &amp; Reports UI pages (monitoring/page.tsx, reports/page.tsx)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2026-01-19</td><td>2026-02-01</td><td>2026-01-19</td><td>2026-02-01</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+    <!-- ═══ SPRINT 12 ═══ -->
+    <tr class="sprint-header">
+      <td rowspan="5" class="sprint-label">Sprint 12<br/><small>2 Feb 2026<br/>→ 15 Feb 2026</small></td>
+      <td rowspan="2">IOC Catalog, Scan History &amp; Caching System</td>
+      <td>Build IOC (Indicators of Compromise) catalog service (intel_catalog_service.py)</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="kathan">Kathan Somani</td>
+      <td>2026-02-02</td><td>2026-02-15</td><td>2026-02-02</td><td>2026-02-15</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Implement server-side response caching (cache.ts / lib/cache.ts) &amp; localStorage history</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2026-02-02</td><td>2026-02-15</td><td>2026-02-02</td><td>2026-02-15</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td rowspan="3">Security Hardening, Final Integration &amp; End-to-End Testing</td>
+      <td>Secure all API endpoints – input validation, sanitization, OWASP compliance</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="dev">Dev Sagani</td>
+      <td>2026-02-02</td><td>2026-02-15</td><td>2026-02-02</td><td>2026-02-15</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Design Threat Intelligence, Resources &amp; History UI pages</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="aryan">Aryan Dsouza</td>
+      <td>2026-02-02</td><td>2026-02-15</td><td>2026-02-02</td><td>2026-02-15</td>
+      <td class="pct-100">100%</td>
+    </tr>
+    <tr>
+      <td>Full-system regression testing (validate_e2e.py); finalize mobile &amp; web deployment</td>
+      <td><span class="badge-complete">Complete</span></td>
+      <td class="darshan">Darshan Dorik</td>
+      <td>2026-02-02</td><td>2026-02-15</td><td>2026-02-02</td><td>2026-02-15</td>
+      <td class="pct-100">100%</td>
+    </tr>
+
+  </tbody>
+</table>
+
+<!-- ── Task Count Summary ── -->
+<div class="section-title" style="margin-top:16px;">Task Contribution Summary</div>
+<table style="max-width:500px">
+  <thead>
+    <tr><th>Team Member</th><th>Tasks Assigned</th><th>% Share</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="kathan">Kathan Somani</td><td>14</td><td>28.6%</td></tr>
+    <tr><td class="dev">Dev Sagani</td><td>13</td><td>26.5%</td></tr>
+    <tr><td class="aryan">Aryan Dsouza</td><td>11</td><td>22.4%</td></tr>
+    <tr><td class="darshan">Darshan Dorik</td><td>11</td><td>22.4%</td></tr>
+    <tr style="background:#dce6f1;font-weight:bold"><td>Total</td><td>49</td><td>100%</td></tr>
+  </tbody>
+</table>
+
+<!-- ── Weekly Meetings ── -->
+<div class="section-title" style="margin-top:16px;">Weekly Meeting Log (Minimum 12)</div>
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>Date</th><th>Attendees</th><th>Agenda Points</th><th>Action Items</th><th>Assigned To</th><th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>2026-01-05</td><td>All</td><td>Project Kickoff, Tech Stack Finalisation, Task Allocation</td><td>Set up repositories; Configure Flask &amp; Next.js dev environments</td><td class="kathan">Kathan, <span class="dev">Dev</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>2</td><td>2026-01-12</td><td>All</td><td>Backend Architecture, API Blueprint Design</td><td>Define route structure; Write base Flask blueprints</td><td class="dev">Dev, <span class="aryan">Aryan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>3</td><td>2026-01-19</td><td>All</td><td>Frontend Dashboard Design, Component Planning</td><td>Design KPI cards, tab layout; Set up shadcn/ui components</td><td class="aryan">Aryan, <span class="darshan">Darshan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>4</td><td>2026-01-26</td><td>All</td><td>Security API Integration, VirusTotal &amp; AbuseIPDB</td><td>Implement domain &amp; IP scan endpoints; Test API responses</td><td class="darshan">Darshan, <span class="kathan">Kathan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>5</td><td>2026-02-03</td><td>All</td><td>Threat Detection Algorithms, Scoring Logic</td><td>Code risk-level classification; Unit-test scoring model</td><td class="kathan">Kathan, <span class="aryan">Aryan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>6</td><td>2026-02-10</td><td>All</td><td>Telegram Bot Alerts, PCAP Analysis Engine</td><td>Integrate Telegram notifications; Set up scapy parser</td><td class="dev">Dev, <span class="darshan">Darshan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>7</td><td>2026-02-17</td><td>All</td><td>CVE Lookup, MITRE ATT&amp;CK Mapping, NVD API</td><td>Test NVD API queries; Map CVEs to MITRE tactics</td><td class="aryan">Aryan, <span class="dev">Dev</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>8</td><td>2026-02-24</td><td>All</td><td>Gemini AI Chatbot, NLP Context Engine</td><td>Integrate Gemini API; Build cybersecurity system prompt</td><td class="darshan">Darshan, <span class="kathan">Kathan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>9</td><td>2026-03-03</td><td>All</td><td>Email Security, HTTP Headers Analysis, Port Scanner</td><td>Implement DMARC/SPF/DKIM parser; Build headers checker</td><td class="dev">Dev, <span class="kathan">Kathan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>10</td><td>2026-03-17</td><td>All</td><td>Monitoring Dashboard, Reports Generation, IOC Catalog</td><td>Build monitoring routes; Integrate threat feed service</td><td class="kathan">Kathan, <span class="darshan">Darshan</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>11</td><td>2026-03-31</td><td>All</td><td>Frontend UI Polish, Scan History, Caching Layer</td><td>Finalize all UI pages; Test localStorage scan history</td><td class="aryan">Aryan, <span class="dev">Dev</span></td><td><span class="badge-complete">✓</span></td></tr>
+    <tr><td>12</td><td>2026-04-14</td><td>All</td><td>End-to-End Testing, Security Hardening, Deployment</td><td>Run validate_e2e.py; OWASP checks; Finalize Netlify &amp; Expo deploy</td><td class="darshan">Darshan, <span class="aryan">Aryan</span></td><td><span class="badge-complete">✓</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ── Codebase Analysis Summary ── -->
+<div class="section-title" style="margin-top:16px;">Codebase Analysis Summary</div>
+<table>
+  <thead>
+    <tr><th>Module / File</th><th>Layer</th><th>Description</th><th>Primary Owner</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>app/page.tsx</td><td>Frontend</td><td>Main dashboard – 7-tab scanner (domain, IP, PCAP, ports, vuln, headers, email), KPI cards, scan history</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/cve/page.tsx</td><td>Frontend</td><td>CVE search page with CVSS severity filtering and NVD data display</td><td class="aryan">Aryan</td></tr>
+    <tr><td>app/threat-intel/page.tsx</td><td>Frontend</td><td>Threat intelligence feeds and IOC catalog browser</td><td class="aryan">Aryan</td></tr>
+    <tr><td>app/monitoring/page.tsx</td><td>Frontend</td><td>Real-time system monitoring dashboard with charts</td><td class="darshan">Darshan</td></tr>
+    <tr><td>app/reports/page.tsx</td><td>Frontend</td><td>Security report viewer and export interface</td><td class="darshan">Darshan</td></tr>
+    <tr><td>app/history/page.tsx</td><td>Frontend</td><td>Scan history browser backed by localStorage cache (cache.ts)</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/resources/page.tsx</td><td>Frontend</td><td>Cybersecurity resources and links page</td><td class="aryan">Aryan</td></tr>
+    <tr><td>app/Chatbot.tsx</td><td>Frontend</td><td>Floating AI chatbot panel with markdown rendering (react-markdown + remark-gfm)</td><td class="aryan">Aryan</td></tr>
+    <tr><td>app/lib/api.ts</td><td>Frontend</td><td>Centralised, type-safe API client for all backend endpoints</td><td class="kathan">Kathan</td></tr>
+    <tr><td>lib/cache.ts</td><td>Frontend</td><td>localStorage-based scan result caching utility</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/routes/ip_routes.py</td><td>Backend</td><td>IP reputation check endpoint; calls IPService; sends Telegram on critical events</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/routes/domain_routes.py</td><td>Backend</td><td>Domain analysis – DNS, WHOIS, VirusTotal, reputation scoring</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/routes/url_routes.py</td><td>Backend</td><td>URL malware scanning via VirusTotal and Google Safe Browsing</td><td class="dev">Dev</td></tr>
+    <tr><td>app/routes/pcap_routes.py</td><td>Backend</td><td>PCAP file upload, scapy-based packet analysis, protocol &amp; anomaly detection</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/routes/security_routes.py</td><td>Backend</td><td>Security headers checker &amp; email security (DMARC/SPF/DKIM) analysis</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/routes/chat_routes.py</td><td>Backend</td><td>POST /api/chat – rate-limited (10/min); delegates to GeminiService</td><td class="dev">Dev</td></tr>
+    <tr><td>app/routes/health_routes.py</td><td>Backend</td><td>Health-check endpoint for deployment/monitoring</td><td class="dev">Dev</td></tr>
+    <tr><td>app/services/gemini_service.py</td><td>Backend</td><td>Google Gemini API integration with cybersecurity system prompt</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/services/ip_service.py</td><td>Backend</td><td>Multi-source IP analysis: AbuseIPDB, GreyNoise, Shodan aggregation</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/services/telegram_service.py</td><td>Backend</td><td>Telegram Bot API notifications for critical/high-severity events</td><td class="kathan">Kathan</td></tr>
+    <tr><td>app/services/url_service.py</td><td>Backend</td><td>URL threat assessment service</td><td class="dev">Dev</td></tr>
+    <tr><td>services/cve_service.py</td><td>Backend</td><td>NIST NVD API integration – CVE fetch, keyword search, CVSS scoring</td><td class="kathan">Kathan</td></tr>
+    <tr><td>services/mitre_service.py</td><td>Backend</td><td>MITRE ATT&amp;CK framework – tactic/technique lookup and mapping</td><td class="dev">Dev</td></tr>
+    <tr><td>services/shodan_service.py</td><td>Backend</td><td>Shodan API wrapper for host intelligence and open-port enumeration</td><td class="kathan">Kathan</td></tr>
+    <tr><td>services/threat_feed_service.py</td><td>Backend</td><td>Threat intelligence feed aggregator – normalises multiple feed formats</td><td class="dev">Dev</td></tr>
+    <tr><td>services/intel_catalog_service.py</td><td>Backend</td><td>IOC catalog management – store, query and tag indicators of compromise</td><td class="kathan">Kathan</td></tr>
+    <tr><td>services/notification_service.py</td><td>Backend</td><td>Central notification dispatcher (Telegram + extensible)</td><td class="kathan">Kathan</td></tr>
+    <tr><td>api/monitoring_routes.py</td><td>Backend</td><td>System monitoring metrics endpoint</td><td class="dev">Dev</td></tr>
+    <tr><td>api/reports_routes.py</td><td>Backend</td><td>Security report generation and retrieval</td><td class="dev">Dev</td></tr>
+    <tr><td>api/network_routes.py</td><td>Backend</td><td>Network analysis and scanning endpoint</td><td class="dev">Dev</td></tr>
+    <tr><td>database.py / cyberregis.db</td><td>Backend</td><td>SQLite local database for scan history and threat records</td><td class="kathan">Kathan</td></tr>
+    <tr><td>config.py / app/config.py</td><td>Backend</td><td>Centralised configuration with environment variable management</td><td class="kathan">Kathan</td></tr>
+  </tbody>
+</table>
+
+<div style="margin-top:12px;padding:8px;background:#f2f2f2;font-size:9px;color:#555;text-align:center;">
+ &nbsp; Project LYCSF111 – CyberRegis &nbsp;|&nbsp; Guide: Prof. Smita Gumaste &nbsp;|&nbsp; Class: LY-CSF-1
+</div>
+
+</div><!-- /padding -->
+</body>
+</html>
