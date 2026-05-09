@@ -118,22 +118,34 @@ export default function Dashboard() {
         // Fall back to localStorage cache
         const LOCAL_KEYS: { key: Parameters<typeof loadStoredScans>[0]; type: string }[] = [
           { key: "cyberregis_integrated", type: "domain" },
-          { key: "cyberregis_ips",        type: "ip" },
-          { key: "cyberregis_ports",      type: "port_scan" },
-          { key: "cyberregis_vuln",       type: "vuln_scan" },
-          { key: "cyberregis_headers",    type: "headers" },
-          { key: "cyberregis_email",      type: "email" },
-          { key: "cyberregis_logs",       type: "pcap" },
+          { key: "cyberregis_ips", type: "ip" },
+          { key: "cyberregis_ports", type: "port_scan" },
+          { key: "cyberregis_vuln", type: "vuln_scan" },
+          { key: "cyberregis_headers", type: "headers" },
+          { key: "cyberregis_email", type: "email" },
+          { key: "cyberregis_logs", type: "pcap" },
         ];
         const all: ScanHistoryEntry[] = LOCAL_KEYS.flatMap(({ key, type }) =>
-          loadStoredScans(key).map((s, i) => ({
-            id: Date.parse(s.timestamp || new Date().toISOString()) + i,
-            scan_type: type,
-            target: s.input,
-            status: "completed",
-            timestamp: s.timestamp,
-            result_summary: s.result,
-          } as ScanHistoryEntry))
+          loadStoredScans(key).map((s, i) => {
+            const r: any = s.result;
+            const cachedScore =
+              r?.data?.risk_score?.score ??
+              r?.domainResults?.data?.risk_score?.score ??
+              r?.data?.additional_checks?.domain_analysis?.risk_score ??
+              r?.domainResults?.data?.additional_checks?.domain_analysis?.risk_score ??
+              r?.data?.risk_assessment?.risk_score ??
+              r?.risk_assessment?.risk_score ??
+              null;
+            return {
+              id: Date.parse(s.timestamp || new Date().toISOString()) + i,
+              scan_type: type,
+              target: s.input,
+              status: "completed",
+              timestamp: s.timestamp,
+              risk_score: cachedScore,
+              result_summary: s.result,
+            } as ScanHistoryEntry;
+          })
         ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
         const start = (page - 1) * HISTORY_PER_PAGE;
@@ -294,7 +306,7 @@ export default function Dashboard() {
   // Refresh history whenever a scan finishes
   useEffect(() => {
     if (!anyLoading) { loadInlineHistory(historyPage); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyLoading]);
 
   /* ──────────────────────────────────────── */
@@ -615,13 +627,26 @@ export default function Dashboard() {
                     email: "text-indigo-400 bg-indigo-400/10 border-indigo-400/30",
                   };
                   const typeColor = SCAN_TYPE_COLORS[scan.scan_type] || SCAN_TYPE_COLORS.domain;
-                  const scoreNum = scan.risk_score;
+                  // risk_score is often null from the API — dig into nested result data
+                  const r: any = scan.result || scan.result_summary;
+                  const extractedScore =
+                    scan.risk_score ??
+                    scan.score ??
+                    r?.data?.risk_score?.score ??
+                    r?.domainResults?.data?.risk_score?.score ??
+                    r?.data?.additional_checks?.domain_analysis?.risk_score ??
+                    r?.domainResults?.data?.additional_checks?.domain_analysis?.risk_score ??
+                    r?.data?.risk_assessment?.risk_score ??
+                    r?.risk_assessment?.risk_score ??
+                    r?.data?.virustotal?.risk_assessment?.risk_score ??
+                    null;
+                  const scoreNum = typeof extractedScore === "number" ? extractedScore : null;
                   const riskCls = !scoreNum ? "text-gray-400 bg-gray-400/10 border-gray-400/30"
-                    : scoreNum >= 80 ? "text-red-500 bg-red-500/10 border-red-500/30"
-                    : scoreNum >= 60 ? "text-orange-500 bg-orange-500/10 border-orange-500/30"
-                    : scoreNum >= 40 ? "text-yellow-500 bg-yellow-500/10 border-yellow-500/30"
-                    : "text-green-400 bg-green-400/10 border-green-400/30";
-                  const riskText = !scoreNum ? "N/A" : scoreNum >= 80 ? `${scoreNum} Critical` : scoreNum >= 60 ? `${scoreNum} High` : scoreNum >= 40 ? `${scoreNum} Medium` : `${scoreNum} Low`;
+                    : scoreNum >= 75 ? "text-green-400 bg-green-400/10 border-green-400/30"
+                      : scoreNum >= 55 ? "text-yellow-500 bg-yellow-500/10 border-yellow-500/30"
+                        : scoreNum >= 36 ? "text-orange-500 bg-orange-500/10 border-orange-500/30"
+                          : "text-red-500 bg-red-500/10 border-red-500/30";
+                  const riskText = !scoreNum ? "N/A" : scoreNum >= 75 ? `${scoreNum} Low` : scoreNum >= 55 ? `${scoreNum} Medium` : scoreNum >= 36 ? `${scoreNum} High` : `${scoreNum} Critical`;
                   return (
                     <tr key={`${scan.id}-${scan.scan_type}-${scan.target}-${scan.timestamp}-${idx}`} className="hover:bg-card/50 transition-colors">
                       <td className="px-6 py-3 font-mono text-foreground text-sm">{scan.target}</td>
@@ -634,10 +659,9 @@ export default function Dashboard() {
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold border ${riskCls}`}>{riskText}</span>
                       </td>
                       <td className="px-6 py-3">
-                        <span className={`text-xs ${
-                          scan.status === "completed" ? "text-green-400" :
+                        <span className={`text-xs ${scan.status === "completed" ? "text-green-400" :
                           scan.status === "error" ? "text-red-400" : "text-yellow-400"
-                        }`}>{scan.status}</span>
+                          }`}>{scan.status}</span>
                       </td>
                       <td className="px-6 py-3 text-xs text-muted-foreground">{new Date(scan.created_at || scan.timestamp || "").toLocaleString()}</td>
                       <td className="px-6 py-3 text-right">
@@ -805,15 +829,23 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
   const recs = d?.recommendations || data?.recommendations || [];
   const u = urlData?.data || urlData;
 
+  // Re-derive risk level from score using corrected thresholds (posture score: higher = safer)
+  const derivedRiskLevel = !risk?.score ? risk?.level
+    : risk.score >= 75 ? "low"
+      : risk.score >= 55 ? "medium"
+        : risk.score >= 36 ? "high"
+          : "critical";
+  const displayRisk = risk ? { ...risk, level: derivedRiskLevel } : risk;
+
   return (
     <div className="space-y-4">
       {/* Risk score banner */}
-      {risk && (
-        <div className={`rounded-lg border p-4 flex items-center justify-between ${risk.level === "critical" || risk.level === "high" ? "border-red-500/30 bg-red-500/5" : risk.level === "medium" ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"}`}>
+      {displayRisk && (
+        <div className={`rounded-lg border p-4 flex items-center justify-between ${displayRisk.level === "critical" || displayRisk.level === "high" ? "border-red-500/30 bg-red-500/5" : displayRisk.level === "medium" ? "border-yellow-500/30 bg-yellow-500/5" : "border-green-500/30 bg-green-500/5"}`}>
           <div>
             <div className="text-sm font-medium text-muted-foreground">Domain Risk Assessment</div>
-            <div className={`text-2xl font-bold ${risk.level === "critical" || risk.level === "high" ? "text-red-500" : risk.level === "medium" ? "text-yellow-500" : "text-green-400"}`}>
-              {risk.score}/100 — {risk.level?.toUpperCase()}
+            <div className={`text-2xl font-bold ${displayRisk.level === "critical" || displayRisk.level === "high" ? "text-red-500" : displayRisk.level === "medium" ? "text-yellow-500" : "text-green-400"}`}>
+              {displayRisk.score}/100 — {displayRisk.level?.toUpperCase()}
             </div>
           </div>
           {u?.threat_analysis && (
@@ -871,21 +903,7 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
           </SectionCard>
         )}
 
-        {info?.shodan?.enabled && (
-          <SectionCard title="Shodan Domain Intel" icon={Globe}>
-            <KV label="Resolved IP" value={info?.shodan?.host?.ip || info?.shodan?.resolve?.[info?.domain]} mono />
-            <KV label="ASN" value={info?.shodan?.host?.asn} mono />
-            <KV label="Org" value={info?.shodan?.host?.org} />
-            <KV label="ISP" value={info?.shodan?.host?.isp} />
-            {Array.isArray(info?.shodan?.host?.ports) && info.shodan.host.ports.length > 0 && (
-              <KV label="Open Ports" value={info.shodan.host.ports.join(", ")} mono />
-            )}
-            {Array.isArray(info?.shodan?.host?.vulns) && info.shodan.host.vulns.length > 0 && (
-              <KV label="Vulns" value={info.shodan.host.vulns.join(", ")} mono />
-            )}
-            {info?.shodan?.host_error && <KV label="Status" value={`Unavailable (${info.shodan.host_error})`} />}
-          </SectionCard>
-        )}
+
 
         {/* SSL */}
         {info?.ssl_info && (
@@ -974,21 +992,7 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
           </SectionCard>
         )}
 
-        {u?.additional_checks?.shodan?.enabled && (
-          <SectionCard title="Shodan URL Host Intel" icon={Globe}>
-            <KV label="IP" value={u.additional_checks.shodan.ip} mono />
-            <KV label="ASN" value={u.additional_checks.shodan.asn} mono />
-            <KV label="Org" value={u.additional_checks.shodan.org} />
-            <KV label="ISP" value={u.additional_checks.shodan.isp} />
-            {Array.isArray(u.additional_checks.shodan.ports) && u.additional_checks.shodan.ports.length > 0 && (
-              <KV label="Open Ports" value={u.additional_checks.shodan.ports.join(", ")} mono />
-            )}
-            {Array.isArray(u.additional_checks.shodan.vulnerabilities) && u.additional_checks.shodan.vulnerabilities.length > 0 && (
-              <KV label="Vulnerabilities" value={u.additional_checks.shodan.vulnerabilities.join(", ")} mono />
-            )}
-            {u.additional_checks.shodan.error && <KV label="Status" value={`Unavailable (${u.additional_checks.shodan.error})`} />}
-          </SectionCard>
-        )}
+
       </div>
 
       {/* Recommendations */}
@@ -1009,10 +1013,9 @@ function DomainResultsView({ data, urlData, fetchFile }: { data: any; urlData: a
                   {(severity || category || mitre) && (
                     <div className="flex items-center gap-2 ml-5 flex-wrap">
                       {category && <span className="text-xs text-muted-foreground">{category}</span>}
-                      {severity && <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${
-                        severity === "high" || severity === "critical" ? "text-red-400 border-red-400/30 bg-red-400/10" :
+                      {severity && <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${severity === "high" || severity === "critical" ? "text-red-400 border-red-400/30 bg-red-400/10" :
                         severity === "medium" ? "text-yellow-400 border-yellow-400/30 bg-yellow-400/10" :
-                        "text-blue-400 border-blue-400/30 bg-blue-400/10"}`}>{severity}</span>}
+                          "text-blue-400 border-blue-400/30 bg-blue-400/10"}`}>{severity}</span>}
                       {mitre && <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary font-mono">{mitre}</span>}
                     </div>
                   )}
@@ -1119,24 +1122,7 @@ function IpResultsView({ data }: { data: any }) {
           </SectionCard>
         )}
 
-        {shodan?.enabled && (
-          <SectionCard title="Shodan Enrichment" icon={Globe}>
-            <KV label="ASN" value={shodan.asn} mono />
-            <KV label="Org" value={shodan.org} />
-            <KV label="ISP" value={shodan.isp} />
-            <KV label="Country" value={shodan.country} />
-            <KV label="City" value={shodan.city} />
-            <KV label="OS" value={shodan.os} />
-            <KV label="Open Ports" value={shodan.open_ports_count} />
-            {Array.isArray(shodan.ports) && shodan.ports.length > 0 && (
-              <KV label="Port List" value={shodan.ports.join(", ")} mono />
-            )}
-            {Array.isArray(shodan.vulnerabilities) && shodan.vulnerabilities.length > 0 && (
-              <KV label="Vulnerabilities" value={shodan.vulnerabilities.join(", ")} mono />
-            )}
-            {shodan.error && <KV label="Shodan Status" value={`Unavailable (${shodan.error})`} />}
-          </SectionCard>
-        )}
+
       </div>
 
       {abuseReports.length > 0 && (
