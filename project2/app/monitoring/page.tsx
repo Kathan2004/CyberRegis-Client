@@ -14,6 +14,7 @@ import {
   upsertStoredScan,
   SCHEDULE_STORAGE_KEY,
 } from "@/lib/cache";
+import { API_URL } from "@/app/lib/backend";
 
 type ScheduledScanType = "domain" | "ip" | "port" | "vuln" | "headers" | "email";
 
@@ -87,8 +88,6 @@ export default function MonitoringPage() {
   const [cachedEmails, setCachedEmails] = useState<StoredScan[]>([]);
   const [scheduledScans, setScheduledScans] = useState<ScheduledScan[]>([]);
   const scheduledScansRef = useRef<ScheduledScan[]>([]);
-
-  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
   const reloadCaches = () => {
     setCachedIntegrated(loadStoredScans("cyberregis_integrated"));
