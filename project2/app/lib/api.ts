@@ -11,7 +11,7 @@ import type {
   ScanHistoryEntry, DashboardStats, SecurityReport,
 } from "@/app/types";
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+import { API_URL } from "@/app/lib/backend";
 
 /** Generic fetch wrapper with error handling. */
 async function apiFetch<T>(
